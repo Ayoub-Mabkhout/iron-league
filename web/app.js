@@ -48,7 +48,7 @@ function join(){
       if(ios()&&!standalone())toast('Now add Iron League to your Home Screen from the Share menu.')}
     catch(err){go.disabled=false;note.textContent=err instanceof ApiError?(invite&&err.status===403?'This profile link is invalid or has expired. Ask for a new link.':err.status===409?'This browser is already joined. Reload Iron League.':err.message||'Your server refused the request.'):'No connection. Try again when you are online.'}};
   const parts=[el('span',{class:'mark'},icon('barbell')),el('h1',{text:'Iron League'}),
-    el('p',{class:'hint',text:'Pick the name others see on the standings. Your workouts stay private unless you share them.'}),form];
+    el('p',{class:'hint',text:invite?'Enter your display name.':'Enter the name you use on Iron League. A new name starts a new profile.'}),form];
   if(ios()&&!standalone())parts.push(el('p',{class:'hint small',text:'Join in Safari before adding Iron League to your Home Screen.'}));
   app.replaceChildren(el('main',{class:'join'},...parts));
   setTimeout(()=>name.focus(),60);

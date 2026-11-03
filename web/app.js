@@ -32,7 +32,7 @@ async function boot(){
     if(e instanceof ApiError&&e.status===401){try{localStorage.removeItem(KNOWN)}catch{}join();return}
     account=known();if(!account){app.replaceChildren(el('div',{class:'boot'},el('p',{text:'Connect to the internet to open Iron League for the first time.'})));return}
   }
-  if(params.has('invite'))clean('invite');
+  if(params.has('invite')||params.has('switch')){join();return}
   remember(account);start(account);
 }
 function clean(key){params.delete(key);const q=params.toString();history.replaceState(history.state,'',location.pathname+(q?'?'+q:''))}
@@ -44,7 +44,7 @@ function join(){
   const note=el('p',{class:'hint',attrs:{role:'status'}});
   const form=el('form',{},name,go,note);
   form.onsubmit=async e=>{e.preventDefault();const n=name.value.trim();if(!n){name.focus();return}go.disabled=true;note.textContent='Joining…';
-    try{const account=await api('join',{body:invite?{name:n,invite}:{name:n}});if(invite)clean('invite');remember(account);start(account);
+    try{const account=await api('join',{body:{name:n,invite,switch_profile:true}});clean('invite');clean('switch');remember(account);start(account);
       if(ios()&&!standalone())toast('Now add Iron League to your Home Screen from the Share menu.')}
     catch(err){go.disabled=false;note.textContent=err instanceof ApiError?(invite&&err.status===403?'This profile link is invalid or has expired. Ask for a new link.':err.status===409?'This browser is already joined. Reload Iron League.':err.message||'Your server refused the request.'):'No connection. Try again when you are online.'}};
   const parts=[el('span',{class:'mark'},icon('barbell')),el('h1',{text:'Iron League'}),

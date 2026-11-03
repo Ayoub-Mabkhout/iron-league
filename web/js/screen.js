@@ -28,7 +28,8 @@ export async function refresh(){
 export function render(){
   if(!root)return;const o=overview();
   const head=el('header',{class:'dash-head'},el('h1',{text:'Iron League'}),coachChip());
-  const parts=[head];
+  const profileName=el('a',{class:'hint',text:me.name+' · Switch profile',attrs:{href:'?switch=1'}});
+  const parts=[head,profileName];
   for(const c of store.conflicts())parts.push(conflictBanner(c));
   if(me?.setup_complete===false)parts.push(setupBanner());
   const d=store.draft();parts.push(d?resume(d):next());

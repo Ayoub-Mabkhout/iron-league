@@ -1,5 +1,5 @@
 // Static app shell only. API responses, photos and anything under /train/api never enter this cache.
-const CACHE='train-static-v4',ROOT=new URL('./',self.location).pathname;
+const CACHE='train-static-v5',ROOT=new URL('./',self.location).pathname;
 const FILES=['','index.html','app.js','style.css','onest.ttf','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png',
   'js/core.js','js/glyphs.js','js/api.js','js/store.js','js/units.js','js/art.js','js/chart.js','js/calendar.js','js/nav.js','js/sprints.js',
   'js/settings.js','js/setup.js','js/live.js','js/history.js','js/plan.js','js/coach.js','js/body.js','js/screen.js'];

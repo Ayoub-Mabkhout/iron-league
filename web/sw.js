@@ -1,5 +1,5 @@
 // Static app shell only. API responses, photos and anything under /train/api never enter this cache.
-const CACHE='train-static-v2',ROOT=new URL('./',self.location).pathname;
+const CACHE='train-static-v3',ROOT=new URL('./',self.location).pathname;
 const FILES=['','index.html','app.js','style.css','onest.ttf','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png',
   'js/core.js','js/glyphs.js','js/api.js','js/store.js','js/units.js','js/art.js','js/chart.js','js/calendar.js','js/nav.js','js/sprints.js',
   'js/settings.js','js/setup.js','js/live.js','js/history.js','js/plan.js','js/coach.js','js/body.js','js/screen.js'];
@@ -12,12 +12,12 @@ self.addEventListener('fetch',event=>{
   const path=event.request.mode==='navigate'&&url.pathname===ROOT?ROOT:url.pathname;if(!ASSETS.includes(path))return;
   event.respondWith(fetch(event.request).then(response=>{if(response.ok){const copy=response.clone();caches.open(CACHE).then(c=>c.put(path,copy))}return response}).catch(()=>caches.match(path)));
 });
-/** {title,body,tag,url,image}; the photo also shows inside Train when the system leaves it out. */
+/** {title,body,tag,url,image}; the photo also shows inside Iron League when the system leaves it out. */
 self.addEventListener('push',event=>{
-  let d={};try{d=event.data?event.data.json():{}}catch{d={title:'Train',body:event.data?.text()||''}}
+  let d={};try{d=event.data?event.data.json():{}}catch{d={title:'Iron League',body:event.data?.text()||''}}
   const options={body:d.body||'',tag:d.tag||undefined,data:{url:d.url||ROOT},icon:ROOT+'icon-192.png',badge:ROOT+'icon-192.png',renotify:!!d.tag};
   if(d.image)options.image=d.image;
-  event.waitUntil(self.registration.showNotification(d.title||'Train',options));
+  event.waitUntil(self.registration.showNotification(d.title||'Iron League',options));
 });
 self.addEventListener('notificationclick',event=>{
   event.notification.close();

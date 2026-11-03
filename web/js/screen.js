@@ -27,13 +27,13 @@ export async function refresh(){
 }
 export function render(){
   if(!root)return;const o=overview();
-  const head=el('header',{class:'dash-head'},el('h1',{text:'Train'}),coachChip());
+  const head=el('header',{class:'dash-head'},el('h1',{text:'Iron League'}),coachChip());
   const parts=[head];
   for(const c of store.conflicts())parts.push(conflictBanner(c));
   if(me?.setup_complete===false)parts.push(setupBanner());
   const d=store.draft();parts.push(d?resume(d):next());
   parts.push(el('div',{class:'tiles'},sprintTile(),rankTile(o),weightTile(o),runTile(o)));
-  parts.push(el('nav',{class:'doors','aria-label':'Train sections'},
+  parts.push(el('nav',{class:'doors','aria-label':'Iron League sections'},
     door('history','History',HUE.amber,()=>history.open()),door('recipe','Templates',HUE.teal,()=>plan.templates()),door('barbell','Exercises',HUE.violet,()=>plan.pick(id=>history.exercise(id),{title:'Exercises'})),
     door('body','Body',HUE.pink,()=>body.open()),door('star','Friends',HUE.orange,standings),door('settings','Profile',HUE.blue,profile)));
   let state=loading?'Updating…':problem;if(store.waiting()>0&&!loading&&!problem)state=plural(store.waiting(),'change')+' waiting to sync';
@@ -244,13 +244,13 @@ function reminders(){
 const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 const ios=()=>/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 async function pushStatus(out){
-  if(!('serviceWorker' in navigator)||!('PushManager' in window)){out.textContent=ios()&&!standalone()?'On iPhone, add Train to your Home Screen and open it from there to get reminders.':'This browser cannot show reminders.';return}
-  if(Notification.permission==='denied'){out.textContent='Notifications are blocked for Train in your settings.';return}
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){out.textContent=ios()&&!standalone()?'On iPhone, add Iron League to your Home Screen and open it from there to get reminders.':'This browser cannot show reminders.';return}
+  if(Notification.permission==='denied'){out.textContent='Notifications are blocked for Iron League in your settings.';return}
   const sub=await (await navigator.serviceWorker.ready).pushManager.getSubscription();out.textContent=sub?'Notifications are on for this device.':'Notifications are off for this device.';
 }
 /** Must run from a tap: the browser asks for permission, then the subscription goes to the server. */
 async function enablePush(out){
-  if(ios()&&!standalone()){toast('Add Train to your Home Screen first, then open it from there.');out.textContent='On iPhone, reminders work from the Home Screen app.';return}
+  if(ios()&&!standalone()){toast('Add Iron League to your Home Screen first, then open it from there.');out.textContent='On iPhone, reminders work from the Home Screen app.';return}
   if(!('PushManager' in window)){toast('This browser cannot show reminders.');return}
   try{const permission=await Notification.requestPermission();if(permission!=='granted'){out.textContent='Notifications were not allowed.';return}
     const {public_key}=await api('push/key');const reg=await navigator.serviceWorker.ready;
@@ -266,11 +266,11 @@ async function exportData(){try{const data=await api('export');const url=URL.cre
 export async function reminder(id){
   const p=page('Reminder');p.body.append(el('p',{class:'hint',text:'Loading…'}));
   try{const r=await api('reminders/history/'+encodeURIComponent(id));p.body.replaceChildren(el('h2',{class:'reminder-title',text:r.title}),el('p',{class:'reminder-body',text:r.body}),
-      r.image?el('img',{class:'reminder-image',src:r.image,alt:'Your reminder photo'}):null,button('Open Train','btn primary wide',()=>p.close()))}
+      r.image?el('img',{class:'reminder-image',src:r.image,alt:'Your reminder photo'}):null,button('Open Iron League','btn primary wide',()=>p.close()))}
   catch{p.body.replaceChildren(el('p',{class:'hint',text:"Couldn't load this reminder."}))}
 }
 
-/** Friends: everyone in Train with their lifting and running rank and current sprint. A friend opens only when they share. */
+/** Friends: everyone in Iron League with their lifting and running rank and current sprint. A friend opens only when they share. */
 export async function standings(){
   const p=page('Friends');const list=el('div',{class:'stack'},el('p',{class:'hint',text:'Loading…'}));p.body.append(list);
   try{const {items}=await api('standings');const order=[...items].sort((a,b)=>(b.lifting_score??-1)-(a.lifting_score??-1));

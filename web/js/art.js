@@ -1,4 +1,4 @@
-// Drawn pieces of Train, ported from the native views: exercise figures with equipment badges, tier crests, the ridge of camps,
+// Drawn pieces of Iron League, ported from the native views: exercise figures with equipment badges, tier crests, the ridge of camps,
 // the muscle map and dashboard sparklines. All SVG, so they stay sharp and cost nothing to ship.
 import {svg,el,icon,HUE,alpha,cssColor} from './core.js';
 import {data,rows} from './store.js';

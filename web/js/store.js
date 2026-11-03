@@ -1,4 +1,4 @@
-// The phone-side Train store, ported from the Android WorkoutStore: revisioned entities, an ordered outbox with stable mutation
+// The phone-side Iron League store, ported from the Android WorkoutStore: revisioned entities, an ordered outbox with stable mutation
 // IDs, conflict review, and a live draft. Everything lives in IndexedDB so a workout survives a closed tab or a dead signal.
 import {uid} from './core.js';
 import {api,ApiError} from './api.js';

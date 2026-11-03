@@ -30,7 +30,7 @@ export function open(){
     const bump=d=>{value=Math.max(0,Math.round((value+d)*10)/10);field.value=num(value);haptic(4)};
     const hold=(btn,d)=>{let t=0;const go=()=>{bump(d);t=setTimeout(go,t?60:380)};btn.addEventListener('pointerdown',()=>{t=0;go()});['pointerup','pointerleave','pointercancel'].forEach(e=>btn.addEventListener(e,()=>clearTimeout(t)));btn.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')bump(d)})};
     const minus=iconButton('minus','Less'),plus=iconButton('plus','More');hold(minus,-step);hold(plus,step);
-    const save=iconButton('check','Log weight',()=>{if(!(value>0)){toast('Enter your weight');return}store.putEntity('measurement',uid(),{measured_at:iso(Date.now(),zone()),kind:'bodyweight',value:Math.round(units.loadIn(value)*100)/100,unit:'kg',source:'Train web'});toast('Logged '+units.load(units.loadIn(value)));store.sync().then(paint)},'tonal',HUE.green);
+    const save=iconButton('check','Log weight',()=>{if(!(value>0)){toast('Enter your weight');return}store.putEntity('measurement',uid(),{measured_at:iso(Date.now(),zone()),kind:'bodyweight',value:Math.round(units.loadIn(value)*100)/100,unit:'kg',source:'Iron League web'});toast('Logged '+units.load(units.loadIn(value)));store.sync().then(paint)},'tonal',HUE.green);
     return el('div',{class:'logger'},minus,el('div',{class:'stepper'},field,el('span',{text:units.loadLabel()})),plus,save);
   }
   function photos(){

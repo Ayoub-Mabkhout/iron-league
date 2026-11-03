@@ -1,4 +1,4 @@
-// Small DOM toolkit for Train: elements, the native glyphs, pages that stack like the Android sheets, dialogs and toasts.
+// Small DOM toolkit for Iron League: elements, the native glyphs, pages that stack like the Android sheets, dialogs and toasts.
 import {GLYPHS} from './glyphs.js';
 
 const SVG='http://www.w3.org/2000/svg';

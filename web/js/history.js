@@ -28,7 +28,7 @@ export function sessionStats(w){
 }
 
 const autoBriefs=()=>!!store.athlete().auto_coach_briefs;
-export function briefState(status, location='Train → Next workout'){return {
+export function briefState(status, location='Iron League → Next workout'){return {
   writing:'Your coach is writing. Read it in '+location+'.',
   waiting:'Brief queued. Read it in '+location+' when the coach is back online.',
   failed:"Your coach couldn't write this.",
@@ -37,7 +37,7 @@ export function briefState(status, location='Train → Next workout'){return {
 /** One workout's brief, for the end screen and History; null when a session never had one. */
 export function workoutBrief(id,history){
   const b=(store.overview().workout_briefs||{})[id];if(!b&&history)return null;
-  const ready=b?.state==='ready',location='Train → History → this workout';
+  const ready=b?.state==='ready',location='Iron League → History → this workout';
   const text=ready?b.text:b?briefState(b.state,location):autoBriefs()?
     'The brief queues when this workout syncs. Read it in '+location+'.':'Automatic briefs are off.';
   const box=el('div',{class:'brief'+(ready?' ready':''),attrs:{role:'status'}},icon('sparkle'),el('p',{text}));

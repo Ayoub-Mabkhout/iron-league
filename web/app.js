@@ -30,7 +30,7 @@ async function boot(){
   try{account=await api('me')}
   catch(e){
     if(e instanceof ApiError&&e.status===401){try{localStorage.removeItem(KNOWN)}catch{}join();return}
-    account=known();if(!account){app.replaceChildren(el('div',{class:'boot'},el('p',{text:'Connect to the internet to open Train for the first time.'})));return}
+    account=known();if(!account){app.replaceChildren(el('div',{class:'boot'},el('p',{text:'Connect to the internet to open Iron League for the first time.'})));return}
   }
   if(params.has('invite'))clean('invite');
   remember(account);start(account);
@@ -41,19 +41,19 @@ function clean(key){params.delete(key);const q=params.toString();history.replace
 function join(){
   const invite=params.get('invite')||'';
   const name=el('input',{class:'field',autocomplete:'nickname',maxLength:80,placeholder:'Your name',attrs:{'aria-label':'Display name',enterkeyhint:'go'}});
-  const go=el('button',{class:'btn primary wide',type:'submit',text:'Join Train'});
+  const go=el('button',{class:'btn primary wide',type:'submit',text:'Join Iron League'});
   const note=el('p',{class:'hint',attrs:{role:'status'}});
   const form=el('form',{},name,go,note);
   form.onsubmit=async e=>{e.preventDefault();const n=name.value.trim();if(!n){name.focus();return}go.disabled=true;note.textContent='Joining…';
     try{const account=await api('join',{body:{name:n,invite}});clean('invite');remember(account);start(account);
-      if(ios()&&!standalone())toast('Now add Train to your Home Screen from the Share menu.')}
-    catch(err){go.disabled=false;note.textContent=err instanceof ApiError?(err.status===403?'This invite is invalid or has expired. Ask for a new link.':err.status===409?'This browser is already joined. Reload Train.':err.message||'Your server refused the request.'):'No connection. Try again when you are online.'}};
-  const parts=[el('span',{class:'mark'},icon('barbell')),el('h1',{text:'Train'})];
+      if(ios()&&!standalone())toast('Now add Iron League to your Home Screen from the Share menu.')}
+    catch(err){go.disabled=false;note.textContent=err instanceof ApiError?(err.status===403?'This invite is invalid or has expired. Ask for a new link.':err.status===409?'This browser is already joined. Reload Iron League.':err.message||'Your server refused the request.'):'No connection. Try again when you are online.'}};
+  const parts=[el('span',{class:'mark'},icon('barbell')),el('h1',{text:'Iron League'})];
   if(invite){parts.push(el('p',{class:'hint',text:'Pick the name others see on the standings. Your workouts stay private unless you share them.'}),form);
-    if(ios()&&standalone())parts.push(el('p',{class:'hint small',text:'If joining fails here, open the invite link in Safari, join there, then add Train to your Home Screen again.'}));
-    else if(ios())parts.push(el('p',{class:'hint small',text:'Join here in Safari first, then add Train to your Home Screen from the Share menu so it stays signed in.'}))}
-  else parts.push(el('p',{class:'hint',text:'Train is invite only. Open the link you were sent to join.'}),
-    ios()&&standalone()?el('p',{class:'hint small',text:'On iPhone, open your invite link in Safari and join there before adding Train to your Home Screen.'}):null);
+    if(ios()&&standalone())parts.push(el('p',{class:'hint small',text:'If joining fails here, open the invite link in Safari, join there, then add Iron League to your Home Screen again.'}));
+    else if(ios())parts.push(el('p',{class:'hint small',text:'Join here in Safari first, then add Iron League to your Home Screen from the Share menu so it stays signed in.'}))}
+  else parts.push(el('p',{class:'hint',text:'Iron League is invite only. Open the link you were sent to join.'}),
+    ios()&&standalone()?el('p',{class:'hint small',text:'On iPhone, open your invite link in Safari and join there before adding Iron League to your Home Screen.'}):null);
   app.replaceChildren(el('main',{class:'join'},...parts.filter(Boolean)));
   if(invite)setTimeout(()=>name.focus(),60);
 }

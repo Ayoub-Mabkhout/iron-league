@@ -37,7 +37,7 @@ export function open(account,done){
       const d={...store.athlete(),units:imperial?'imperial':'metric',sex:sex.value};
       if(y!=null)d.age_years=y;if(h!=null&&h>0)d.height_cm=Math.round((imperial?h*2.54:h)*10)/10;
       store.putEntity('athlete','self',d);
-      if(w!=null&&w>0)store.putEntity('measurement',uid(),{measured_at:iso(Date.now(),zone()),kind:'bodyweight',value:Math.round((imperial?w*units.LB:w)*100)/100,unit:'kg',source:'Train web'});
+      if(w!=null&&w>0)store.putEntity('measurement',uid(),{measured_at:iso(Date.now(),zone()),kind:'bodyweight',value:Math.round((imperial?w*units.LB:w)*100)/100,unit:'kg',source:'Iron League web'});
       step=1;paint()});
     return [el('h2',{class:'setup-title',text:'About you'}),el('p',{class:'hint',text:'Ranks compare you with lifters of your sex and bodyweight. Your coach uses all of this. Leave anything blank you would rather not share.'}),
       seg,el('label',{class:'field-label'},el('span',{text:'Age'}),age),el('div',{class:'row2'},el('label',{class:'field-label'},hl,height),el('label',{class:'field-label'},wl,weight)),
@@ -54,7 +54,7 @@ export function open(account,done){
     const extra=el('div',{class:'stack nested'});const sync=()=>{extra.hidden=!diss.input.checked;extra.replaceChildren(...[photos.el,photos.input.checked?choose:null].filter(Boolean))};
     diss.input.onchange=async()=>{if(diss.input.checked&&!await confirmDialog('Turn on Diss mode?','Reminders and some briefs may use crude, profane language. You can turn it off any time in Profile.','Turn on','Cancel'))diss.input.checked=false;sync()};
     photos.input.onchange=sync;sync();
-    return [el('h2',{class:'setup-title',text:'How Train treats you'}),el('p',{class:'hint',text:'Both stay off unless you turn them on. You can change either one later in Profile.'}),
+    return [el('h2',{class:'setup-title',text:'How Iron League treats you'}),el('p',{class:'hint',text:'Both stay off unless you turn them on. You can change either one later in Profile.'}),
       el('div',{class:'card'},diss.el,extra,timed.el),
       button('Continue','btn primary wide',async()=>{let ok=await settings.save({roast:diss.input.checked,scheduled_sprints:timed.input.checked});
         if(photos.input.checked||ids.length)ok=await settings.save({photos_enabled:photos.input.checked,photo_ids:ids})&&ok;

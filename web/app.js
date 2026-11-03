@@ -24,8 +24,21 @@ Object.assign(nav,{
   sprint:plan.sprint,sprintList:plan.sprintList,refresh:screen.refresh,profile:screen.profile,begin:screen.begin,dashboard:screen.render,
 });
 
+/** A new version takes over as soon as it is deployed: the worker is checked on every open, and the page reloads itself
+ * when the new worker takes control, at once if nothing is open, otherwise the next time the app goes to the background. */
+function watchForUpdates(){
+  navigator.serviceWorker.register('sw.js',{scope:'./',updateViaCache:'none'}).then(reg=>{
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reg.update().catch(()=>{})});
+  }).catch(()=>{});
+  if(!navigator.serviceWorker.controller)return;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(!document.querySelector('.page,dialog[open]'))location.reload();
+    else document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')location.reload()},{once:true});
+  });
+}
+
 async function boot(){
-  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js',{scope:'./'}).catch(()=>{});
+  if('serviceWorker' in navigator)watchForUpdates();
   let account=null;
   try{account=await api('me')}
   catch(e){

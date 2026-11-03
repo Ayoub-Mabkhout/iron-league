@@ -12,4 +12,4 @@ python scripts/train_web_fixture.py --assets ../iron-league/web
 
 Open one of the printed invite links. The fixture uses a temporary database with synthetic workouts and a stand-in coach. The frontend has no build step.
 
-Onest is distributed under the [SIL Open Font License](Onest-OFL.txt).
+Onest is distributed under the [SIL Open Font License](web/Onest-OFL.txt).

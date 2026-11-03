@@ -59,6 +59,10 @@ export function toast(message,kind){
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.classList.add('out');setTimeout(()=>{t.hidden=true},220)},4200);
 }
 
+// Full-screen pages follow the visible viewport, so an on-screen keyboard shrinks them instead of covering their controls.
+if(window.visualViewport){const fit=()=>{const v=visualViewport,r=document.documentElement.style;r.setProperty('--vv-height',v.height+'px');r.setProperty('--vv-top',v.offsetTop+'px')};
+  visualViewport.addEventListener('resize',fit);visualViewport.addEventListener('scroll',fit);fit()}
+
 /** Pages stack over the dashboard like the Android sheets. Back, the browser's back and a swipe from the edge all close the top one. */
 const stack=[];
 export function page(title,options={}){
@@ -70,22 +74,33 @@ export function page(title,options={}){
   const root=el('section',{class:'page'+(options.cls?' '+options.cls:''),attrs:{role:'dialog','aria-modal':'true','aria-label':title}},bar,body);
   if(options.footer)root.append(options.footer);
   const entry={root,body,bar,heading,end,onclose:options.onclose,closed:false};
-  // Closing from code removes the page now and skips the popstate its history.back() causes, so a page opened right after survives.
-  entry.close=()=>{if(entry.closed||!stack.includes(entry))return;ignore++;remove(entry);history.back()};
+  // Closing from code removes the page now; the history entry it leaves behind records a depth that is already met, so its popstate changes nothing.
+  entry.close=()=>{if(entry.closed||!stack.includes(entry))return;remove(entry);pendingBacks++;history.back()};
   stack.push(entry);document.getElementById('pages').append(root);document.body.classList.add('paged');
-  history.pushState({page:stack.length},'');
+  // Chrome resolves a pending history.back() against the entry it was called from, so a page opened in that gap records
+  // its entry only after the back lands; otherwise the back would close it too.
+  if(pendingBacks)deferred++;else history.pushState({iron:stack.length},'');
   requestAnimationFrame(()=>root.classList.add('open'));
   setTimeout(()=>back.focus({preventScroll:true}),60);
   return entry;
 }
 export function topPage(){return stack[stack.length-1]}
-let ignore=0;
 function remove(top){
   const i=stack.indexOf(top);if(i<0)return;stack.splice(i,1);top.closed=true;top.root.classList.remove('open');top.root.classList.add('closing');
   setTimeout(()=>top.root.remove(),reduced()?0:220);if(!stack.length)document.body.classList.remove('paged');
   const after=top.onclose;top.onclose=null;if(after)after();
 }
-addEventListener('popstate',()=>{if(ignore){ignore--;return}if(openDialog){openDialog.cancel();history.pushState({page:stack.length},'');return}const top=stack[stack.length-1];if(top)remove(top)});
+/** Every history entry records how many pages should be open. Back closes pages down to that depth; an entry left over from a
+ * page closed in code, or from before a reload, asks for more pages than are open and is skipped. */
+let pendingBacks=0,deferred=0;
+addEventListener('popstate',e=>{
+  if(pendingBacks){pendingBacks--;if(!pendingBacks)for(;deferred;deferred--)history.pushState({iron:stack.length-deferred+1},'');return}
+  const depth=e.state?.iron||0;
+  if(openDialog){openDialog.cancel();history.pushState({iron:stack.length},'');return}
+  if(depth>stack.length){history.back();return}
+  while(stack.length>depth)remove(stack[stack.length-1]);
+});
+if(history.state?.iron)history.replaceState({iron:0},'');
 export function closeAll(){const n=stack.length;if(n)history.go(-n)}
 
 /** Native-feeling dialogs that resolve with the choice; Escape and the backdrop cancel. */

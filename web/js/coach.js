@@ -44,7 +44,7 @@ export function open(context={},live=null,prefill='',photos=[]){
     const shown=list.filter(q=>!['next_session_brief','sprint_brief'].includes(q.context?.purpose));
     if(!shown.length){items.replaceChildren(el('p',{class:'empty',text:online?'Ask about a swap, fatigue, pain or your plan.':'The coach is offline. You can still send a message. The reply will appear in this chat when the coach is back.'}));return}
     items.replaceChildren(...shown.flatMap(q=>{const mine=el('p',{class:'bubble mine',text:q.question});
-      if(q.state==='completed'){const c=el('div',{class:'bubble coach'},el('p',{text:q.answer}));proposals(c,q);return [mine,c]}
+      if(q.state==='completed'){const c=el('div',{class:'bubble coach'},el('p',{},...rich(q.answer)));proposals(c,q);return [mine,c]}
       const message=q.state==='failed'?"Your coach couldn't answer. Try again.":q.state==='queued'?
         (online?'Queued. The reply will appear here.':'Queued. The reply will appear here when the coach is back online.'):'Your coach is thinking…';
       return [mine,el('p',{class:'bubble wait'+(q.state==='failed'?' failed':''),text:message})]}));
@@ -69,6 +69,8 @@ export function open(context={},live=null,prefill='',photos=[]){
   }
   poll();setTimeout(()=>input.focus({preventScroll:true}),120);
 }
+/** The coach writes light Markdown; **bold** becomes bold text and everything else stays plain, never HTML. */
+function rich(text){return String(text||'').split(/\*\*(.+?)\*\*/g).map((part,i)=>i%2?el('strong',{text:part}):part)}
 function describe(kind,d){
   if(!d)return 'new '+kind;
   if(kind==='sprint')return d.name+' · '+d.phase+' · '+(d.target_sessions||0)+' workouts until '+d.end+(d.cycle?' · cycle of '+d.cycle.length:'');

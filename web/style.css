@@ -96,7 +96,7 @@ button.card{text-align:left;width:100%}
 .label{font-size:12.5px;line-height:17px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:4px}
 .empty{color:var(--muted);text-align:center;padding:28px 8px}
 .pair{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:3px 0}.pair span{color:var(--muted)}.pair strong{font-weight:650;text-align:right}.pair strong.up{color:var(--success)}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.stats.four{grid-template-columns:1fr 1.4fr 1fr 1fr}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.stats.four{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)}
 .stat{display:flex;flex-direction:column;align-items:flex-start;background:var(--surface);border:1px solid var(--stroke);border-radius:16px;padding:10px 12px;min-width:0}
 .stat strong{font-size:18px;line-height:24px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}.stat span{font-size:12px;color:var(--muted)}
 .row-btn{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:10px 12px;border:1px solid var(--stroke);border-radius:16px;background:var(--surface);text-align:left}
@@ -149,12 +149,12 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
 .cycle{display:flex;gap:6px;margin-top:10px;min-width:0}
 .cycle-btn{flex:1 1 0;min-width:0;min-height:36px;padding:0 8px;border:0;border-radius:16px;background:rgba(255,255,255,.15);color:#fff;font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cycle-btn.on{background:#fff;color:#2A1460}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .tile-card{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:2px;min-height:118px;padding:12px 14px;border-radius:var(--radius);border:1px solid var(--stroke);background:var(--surface);box-shadow:var(--e1);transition:transform .12s var(--ease)}
 .tile-card:active{transform:scale(.98)}
 .tile-label{font-size:12.5px;font-weight:500;color:var(--muted)}
 .tile-value{font-size:20px;line-height:26px;font-weight:800;margin-top:4px}.tile-value.small{font-size:17px;line-height:23px;font-weight:700}
-.tile-card small{font-size:12px;line-height:16px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile-card small{font-size:12px;line-height:16px;color:var(--muted);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .rank-tile{align-items:center;justify-content:center;padding:10px}
 .rank-tile .crest{flex:1;max-height:84px;width:auto}
 .rank-tile-name{font-size:17px;line-height:23px;font-weight:800;white-space:nowrap;text-align:center}
@@ -296,8 +296,8 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
 
 /* Coach */
 .coach .page-body{padding-bottom:16px}
-.chat{display:flex;flex-direction:column;gap:6px}
-.bubble{max-width:88%;padding:10px 14px;border-radius:18px;font-size:14.5px;line-height:21px;white-space:pre-wrap}
+.chat{display:flex;flex-direction:column;gap:6px;min-width:0}
+.bubble{max-width:88%;min-width:0;padding:10px 14px;border-radius:18px;font-size:14.5px;line-height:21px;white-space:pre-wrap;overflow-wrap:anywhere}
 .bubble.mine{align-self:flex-end;background:var(--accent-soft);border-bottom-right-radius:6px;font-weight:500}
 .bubble.coach{align-self:flex-start;background:var(--surface);border:1px solid var(--stroke);border-bottom-left-radius:6px;display:flex;flex-direction:column;gap:6px}
 .bubble.wait{align-self:flex-start;color:var(--muted);background:none;padding-left:4px}.bubble.failed{color:var(--warning)}
@@ -353,3 +353,10 @@ select.field{appearance:none;background-image:linear-gradient(45deg,transparent 
 .sched-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--stroke)}.sched-row:first-of-type{border-top:0}
 .sched-row strong{display:block;font-weight:600}.sched-row small{display:block;color:var(--muted);font-size:12px}.sched-status{font-size:12.5px;white-space:nowrap}
 .standing .progress{height:5px;margin:4px 0 0}
+
+/* Mobile layout guards: nothing may widen the page, and full-screen pages follow the visible viewport so the keyboard never covers them. */
+body{overflow-wrap:anywhere}
+#app>*,.page-body>*,.card>*,.stack>*{min-width:0}
+.tile-card{min-width:0}
+.page{top:var(--vv-top,0px);bottom:auto;height:var(--vv-height,100%)}
+.chat-bar{flex:none}

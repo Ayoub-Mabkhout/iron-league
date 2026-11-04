@@ -4,7 +4,7 @@ import {el,icon,iconButton,button,page,confirmDialog,toast,card,stat,pair,label,
 import * as store from './store.js';
 import * as units from './units.js';
 import {api,ApiError} from './api.js';
-import {crest,ridge,bodyMap,spark,tierIndex,tierOf,tierColor,label as tierLabel,tile} from './art.js';
+import {crest,ridge,bodyMap,spark,tierIndex,tierOf,tierColor,tierInk,label as tierLabel,tile} from './art.js';
 import {chart,epochDay} from './chart.js';
 import * as history from './history.js';
 import * as plan from './plan.js';
@@ -13,6 +13,7 @@ import * as live from './live.js';
 import {nav} from './nav.js';
 import * as settings from './settings.js';
 import {FIRST_SPRINT} from './setup.js';
+import * as daylight from './daylight.js';
 
 let root=null,loading=false,problem='',chosen=null,me=null;
 export function mount(node,account){root=node;me=account;render()}
@@ -201,9 +202,16 @@ export function profile(){
       const lo=n(gMin.value),hi=n(gMax.value);set('goal_weight_min_kg',lo==null?null:Math.round(units.loadIn(lo)*10)/10);set('goal_weight_max_kg',hi==null?null:Math.round(units.loadIn(hi)*10)/10);
       if(d.goal_weight_min_kg&&d.goal_weight_max_kg&&d.goal_weight_max_kg<d.goal_weight_min_kg){toast('The goal range is reversed');return}
       d.goals=goals.value.split('\n').map(x=>x.trim()).filter(Boolean);store.putEntity('athlete','self',d);toast('Saved');refresh()}));
-  p.body.append(sharing(),reminders());
+  p.body.append(appearance(),sharing(),reminders());
   p.body.append(card(el('h3',{class:'card-title',text:'This device'}),el('p',{class:'hint',text:'Signed in as '+(me?.name||'you')+'. Your workouts are kept on this device until they sync.'}),
     row('Export my data','A JSON copy of everything you have logged',exportData)));
+}
+/** Theme for this device: follows local sunrise and sunset unless chosen otherwise. */
+function appearance(){
+  const c=card(el('h3',{class:'card-title',text:'Appearance'})),seg=el('div',{class:'segmented small',attrs:{role:'radiogroup','aria-label':'Theme'}}),note=el('p',{class:'hint small'});
+  const show=()=>{const m=daylight.mode();seg.replaceChildren(...daylight.MODES.map(([k,t])=>{const b=el('button',{type:'button',class:'seg'+(k===m?' on':''),text:k==='sun'?'Sun':t,attrs:{role:'radio','aria-checked':String(k===m)}});b.onclick=()=>{daylight.setMode(k);show()};return b}));
+    note.textContent=m==='sun'?'Light from sunrise, dark from sunset, timed for your time zone.':m==='system'?'Follows this device’s light or dark setting.':'Always '+m+'.'};
+  show();c.append(seg,note);return c;
 }
 function toggle(title,note,on){const input=el('input',{type:'checkbox',class:'switch',checked:on,attrs:{role:'switch'}});
   return {el:el('label',{class:'toggle'},el('span',{class:'grow'},el('strong',{text:title}),note?el('small',{text:note}):null),input),on:()=>input.checked,input}}
@@ -271,31 +279,91 @@ export async function reminder(id){
   catch{p.body.replaceChildren(el('p',{class:'hint',text:"Couldn't load this reminder."}))}
 }
 
-/** Friends: everyone in Iron League with their lifting and running rank and current sprint. A friend opens only when they share. */
+/** Friends as a league: a podium, where you stand and who's next to pass, then everyone's athlete card. A card opens only when they share. */
 export async function standings(){
   const p=page('Friends');const list=el('div',{class:'stack'},el('p',{class:'hint',text:'Loading…'}));p.body.append(list);
   try{const {items}=await api('standings');const order=[...items].sort((a,b)=>(b.lifting_score??-1)-(a.lifting_score??-1));
-    list.replaceChildren(...order.map((m,i)=>{const mine=m.id===me?.id,lt=tierOf(m.lifting_score||0),rt=tierOf(m.running_score||0);
-      const lift=el('span',{class:'stand-rank'},crest(lt,m.lifting_score==null,30),el('small',{text:m.lifting_score==null?'Unranked':tierLabel(m.lifting_score)}));
-      const run=el('span',{class:'stand-rank'},crest(rt,m.running_score==null,30),el('small',{text:m.running_score==null?'Unranked':tierLabel(m.running_score)}));
-      const s=m.current_sprint,open=mine||m.share_progress;
-      const note=s?s.name+' · '+(s.completed??0)+(s.target_sessions?'/'+s.target_sessions:''):open?'No sprint running':'Keeps progress private';
-      const words=el('span',{class:'grow'},el('strong',{text:m.name+(mine?' (you)':'')}),el('small',{text:note}));
-      if(s?.target_sessions)words.append(plan.progressBar((s.completed||0)/s.target_sessions));
-      const b=el(open?'button':'div',{class:'standing'+(mine?' mine':''),...(open?{type:'button'}:{})},el('span',{class:'place',text:String(i+1)}),words,lift,run);
-      if(open)b.onclick=()=>friend(m.id,'sprint',m.name);return b}),el('p',{class:'hint small',text:'Ranked by lifting. Turn on sharing in Profile so friends can open your sprint and ranks.'}))}
+    const at=order.findIndex(m=>m.id===me?.id),you=order[at];
+    const go=m=>m.id===me?.id?ranks():m.share_progress?friend(m.id,'versus',m.name):toast(m.name+' keeps their progress private');
+    const parts=[];if(order.filter(m=>m.lifting_score!=null).length>=2)parts.push(podium(order.slice(0,3),go));
+    if(you)parts.push(standing(order,at));
+    parts.push(label('The league'),...order.map((m,i)=>athlete(m,i,you,go)),el('p',{class:'hint small',text:'Ordered by overall lifting rank. Turn on sharing in Profile so friends can open your profile.'}));
+    list.replaceChildren(...parts)}
   catch{list.replaceChildren(el('p',{class:'hint',text:'Connect to see your friends.'}))}
 }
+const initials=n=>(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+const tierHue=score=>score==null?'var(--stroke-strong)':tierColor(tierOf(score)),inkOf=score=>score==null?'var(--muted)':tierInk(tierOf(score));
+const short=n=>String(n||'').replace(/ \((barbell|dumbbell|cable|machine)\)/i,'');
+/** A monogram ringed in the athlete's tier colour, with their crest pinned to it. */
+function avatar(name,score,size=44){
+  const a=el('span',{class:'avatar',attrs:{'aria-hidden':'true'}},el('span',{class:'avatar-face',text:initials(name)}));a.style.setProperty('--tier',tierHue(score));a.style.setProperty('--size',size+'px');
+  if(score!=null){const c=crest(tierOf(score),false,Math.round(size*.46));c.classList.add('avatar-crest');a.append(c)}return a}
+function podium(top,go){
+  const step=(m,place)=>{if(!m)return el('span',{class:'podium-slot empty'});const b=el('button',{type:'button',class:'podium-slot p'+place,attrs:{'aria-label':place+'. '+m.name+', '+(m.lifting_score==null?'unranked':tierLabel(m.lifting_score))}},
+      avatar(m.name,m.lifting_score,place===1?64:50),el('strong',{class:'podium-name',text:m.name+(m.id===me?.id?' (you)':'')}),el('small',{class:'podium-tier',text:m.lifting_score==null?'Unranked':tierLabel(m.lifting_score)}),
+      el('span',{class:'podium-block'},el('span',{text:String(place)})));b.style.setProperty('--tier',tierHue(m.lifting_score));b.style.setProperty('--ink',inkOf(m.lifting_score));b.onclick=()=>go(m);return b};
+  return el('div',{class:'podium'},step(top[1],2),step(top[0],1),step(top[2],3));
+}
+/** Your place, the next athlete to pass and how far, on a bar between the athletes either side of you. */
+function standing(order,at){
+  const you=order[at],above=order[at-1],below=order[at+1],s=you.lifting_score;
+  const c=el('div',{class:'hero league-card'},el('small',{class:'league-kicker',text:'Your standing'}),el('strong',{class:'league-place',text:s==null?'Unranked':'#'+(at+1)+' of '+order.length}));
+  if(s==null){c.append(el('p',{class:'league-line',text:'Log a hard set on a main lift to join the standings.'}));return c}
+  if(above&&above.lifting_score!=null){const gap=above.lifting_score-s,lo=below?.lifting_score??Math.max(0,s-Math.max(gap,10)*2);
+    c.append(el('p',{class:'league-line'},gap>0?gap+' points to pass ':'Level with ',el('strong',{text:above.name})));
+    const bar=el('div',{class:'league-bar'},el('span',{class:'league-fill'}),el('span',{class:'league-mark you',text:'You'}),el('span',{class:'league-mark them',text:initials(above.name)}));
+    const f=Math.max(.04,Math.min(.96,(s-lo)/Math.max(1,above.lifting_score-lo)));bar.firstChild.style.transform='scaleX('+f+')';bar.children[1].style.left=(f*100)+'%';c.append(bar)}
+  else c.append(el('p',{class:'league-line',text:below&&below.lifting_score!=null?'Top of the league, '+(s-below.lifting_score)+' points clear of '+below.name+'.':'Top of the league.'}));
+  return c;
+}
+/** One athlete: place, tier, running rank, sprint progress and how far they are from you. */
+function athlete(m,i,you,go){
+  const mine=m.id===me?.id,open=mine||m.share_progress,s=m.current_sprint,score=m.lifting_score;
+  const tier=el('strong',{class:'athlete-tier',text:score==null?'Unranked':tierLabel(score)});tier.style.color=inkOf(score);
+  const words=el('span',{class:'grow'},el('span',{class:'athlete-name'},el('strong',{text:m.name}),mine?el('span',{class:'athlete-tag you',text:'You'}):null,!open?el('span',{class:'athlete-tag',text:'Private'}):null),
+    el('span',{class:'athlete-meta'},tier,m.running_score!=null?el('small',{text:'Running '+tierLabel(m.running_score)}):null));
+  if(s){words.append(el('small',{class:'athlete-sprint',text:s.name+' · '+(s.completed??0)+(s.target_sessions?' of '+s.target_sessions:'')}));if(s.target_sessions)words.append(plan.progressBar((s.completed||0)/s.target_sessions))}
+  let delta=null;if(!mine&&score!=null&&you?.lifting_score!=null){const d=score-you.lifting_score;delta=el('span',{class:'delta '+(d>0?'ahead':d<0?'behind':'level'),text:d===0?'Level':(d>0?'+':'−')+Math.abs(d),attrs:{title:d>0?'Ahead of you':'Behind you'}})}
+  const b=el('button',{type:'button',class:'athlete'+(mine?' mine':'')+(open?'':' closed')},el('span',{class:'place',text:String(i+1)}),avatar(m.name,score,46),words,delta);
+  b.style.setProperty('--tier',tierHue(score));b.onclick=()=>go(m);return b;
+}
 const STATUS={completed:['Done','var(--success)'],missed:['Missed','var(--danger)'],skipped:['Skipped','var(--muted)'],active:['Training now','var(--accent)'],upcoming:['Upcoming','var(--muted)']};
-/** One friend, in two tabs: their sprint and schedule, and their ranks. A rank-up notification opens Ranks directly. */
-export async function friend(id,tab='sprint',name){
+/** One friend's athlete profile: a hero in their tier colour, then head-to-head with you, their sprint, and their ranks. */
+export async function friend(id,tab='versus',name){
   const p=page(name||'Friend');const tabs=el('div',{class:'segmented',attrs:{role:'tablist'}}),body=el('div',{class:'stack'},el('p',{class:'hint',text:'Loading…'}));p.body.append(tabs,body);
   let d;try{d=await api('profiles/'+encodeURIComponent(id))}
   catch(e){tabs.remove();body.replaceChildren(el('p',{class:'hint',text:e instanceof ApiError&&e.status===404?'This friend keeps their progress private.':'Connect to see this.'}));return}
-  p.heading.textContent=d.name;
-  const show=key=>{tab=key;tabs.replaceChildren(...[['sprint','Sprint'],['ranks','Ranks']].map(([k,t])=>{const b=el('button',{type:'button',class:'seg'+(k===tab?' on':''),text:t,attrs:{role:'tab','aria-selected':String(k===tab)}});b.onclick=()=>show(k);return b}));
-    body.replaceChildren(...(tab==='ranks'?friendRanks(d):friendSprint(d)));p.body.scrollTop=0};
+  p.heading.textContent=d.name;p.body.insertBefore(athleteHero(d),tabs);
+  const show=key=>{tab=key;tabs.replaceChildren(...[['versus','Head-to-head'],['sprint','Sprint'],['ranks','Ranks']].map(([k,t])=>{const b=el('button',{type:'button',class:'seg'+(k===tab?' on':''),text:t,attrs:{role:'tab','aria-selected':String(k===tab)}});b.onclick=()=>show(k);return b}));
+    body.replaceChildren(...(tab==='ranks'?friendRanks(d):tab==='sprint'?friendSprint(d):versus(d)))};
   show(tab);
+}
+function athleteHero(d){
+  const score=d.ranks?.lifting_score,lifts=(d.ranks?.lifts||[]).filter(l=>l.percentile!=null),pct=lifts.length?Math.round(lifts.reduce((a,l)=>a+l.percentile,0)/lifts.length):null,run=d.ranks?.running;
+  const h=el('div',{class:'athlete-hero'},el('div',{class:'athlete-hero-top'},avatar(d.name,score,72),el('div',{class:'grow'},el('h2',{text:d.name}),el('strong',{class:'athlete-hero-tier',text:score==null?'Unranked':tierLabel(score)}),pct!=null?el('small',{text:'Stronger than about '+pct+'% of lifters'}):null)),
+    el('div',{class:'athlete-hero-stats'},heroStat(String(d.completed_workouts??0),'workouts'),heroStat(String((d.sprints||[]).filter(x=>x.status==='completed').length),'sprints'),heroStat(run?.tier||'—','running')));
+  h.style.setProperty('--tier',tierHue(score));return h;
+}
+const heroStat=(v,l)=>el('span',{class:'hero-stat'},el('strong',{text:v}),el('small',{text:l}));
+/** You against them: the ridge with both of you on it, then overall, running and each shared lift as a pair of bars. */
+function versus(d){
+  const o=overview(),theirs=d.ranks||{},mine=o.aggregate_score,their=theirs.lifting_score,out=[];
+  out.push(el('div',{class:'ridge-card'},ridge(their!=null?tierOf(their):-1,mine!=null?tierOf(mine):-1),el('div',{class:'ridge-label'},el('small',{text:d.name+' climbs at'}),el('strong',{text:their!=null?tierLabel(their):'Unranked'}))));
+  const rows=[['Overall',mine,their]];const myRun=o.running?.rank;if(myRun?.score!=null||theirs.running?.score!=null)rows.push(['Running',myRun?.score??null,theirs.running?.score??null,myRun?.tier,theirs.running?.tier]);
+  const mineBy=new Map((o.lift_ranks||[]).filter(r=>r.status==='ranked').map(r=>[short(r.exercise_name||r.name).toLowerCase(),r]));
+  for(const l of theirs.lifts||[]){const n=short(l.exercise_name||l.name);const m=mineBy.get(n.toLowerCase());rows.push([n,m?.score??null,l.score??null,m?.tier,l.tier])}
+  const both=rows.slice(1).filter(r=>r[1]!=null&&r[2]!=null),won=both.filter(r=>r[1]>r[2]).length,lost=both.filter(r=>r[1]<r[2]).length;
+  const verdict=!both.length?'Rank the same lifts to compare':won>lost?'You lead '+won+' of '+both.length:lost>won?d.name+' leads '+lost+' of '+both.length:'Dead even across '+both.length;
+  const c=card(el('div',{class:'vs-head'},el('span',{class:'vs-side you'},el('i'),'You'),el('strong',{class:'vs-verdict',text:verdict}),el('span',{class:'vs-side them'},d.name,el('i'))));
+  c.classList.add('vs-card');c.style.setProperty('--them',tierHue(their));
+  // Bars start a little below the lower score, so a 20-point gap reads as a gap rather than two full bars.
+  for(const [n,a,b,ta,tb] of rows){const top=Math.max(a??0,b??0)||1,low=a!=null&&b!=null?Math.max(0,Math.min(a,b)-60):0,bar=(v,cls)=>{const s=el('span',{class:'vs-bar '+cls},el('span'));s.firstChild.style.transform='scaleX('+(v==null?0:Math.max(.04,(v-low)/Math.max(1,top-low)))+')';return s};
+    const diff=a!=null&&b!=null?a-b:null,tag=el('small',{class:'vs-diff '+(diff>0?'ahead':diff<0?'behind':''),text:diff==null?'Not both ranked':diff===0?'Level':(diff>0?'+':'−')+Math.abs(diff)+' pts'});
+    c.append(el('div',{class:'vs-row'+(n==='Overall'?' lead':'')},el('div',{class:'vs-title'},el('strong',{text:n}),tag),
+      el('div',{class:'vs-pair'},el('small',{class:'vs-tier',text:a==null?'—':ta||tierLabel(a)}),bar(a,'you'),bar(b,'them'),el('small',{class:'vs-tier',text:b==null?'—':tb||tierLabel(b)}))))}
+  out.push(c);
+  const s=d.current_sprint;if(s?.target_sessions)out.push(card(el('p',{class:'label',text:'Their sprint'}),el('strong',{text:s.name}),el('small',{class:'hint',text:(s.completed??0)+' of '+s.target_sessions+' workouts'}),plan.progressBar((s.completed||0)/s.target_sessions)));
+  return out;
 }
 const fmtDay=iso=>iso?new Date(iso+'T12:00:00Z').toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}):'';
 function friendSprint(d){

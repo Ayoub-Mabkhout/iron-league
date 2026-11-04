@@ -10,6 +10,9 @@ import * as coach from './js/coach.js';
 import * as settings from './js/settings.js';
 import * as setup from './js/setup.js';
 import {nav} from './js/nav.js';
+import * as daylight from './js/daylight.js';
+
+daylight.start();daylight.onChange(()=>screen.render());
 
 const app=document.getElementById('app'),params=new URLSearchParams(location.search);
 const KNOWN='train-account';

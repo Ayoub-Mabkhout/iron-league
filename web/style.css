@@ -434,7 +434,7 @@ body{overflow-wrap:anywhere}
 .vs-bar.them span{background:var(--them);transform-origin:left}
 @media(prefers-reduced-motion:reduce){.vs-bar span{transition:none}}
 @media(max-width:350px){.seg{font-size:12.5px;padding:0 4px}.hero-stat small{font-size:11px}}
-.auth-form{display:flex;flex-direction:column;gap:10px;width:100%}.auth-form [hidden]{display:none}
+.auth-form{display:flex;flex-direction:column;gap:10px;width:100%}.auth-form [hidden],.auth-form[hidden]{display:none}
 .join .segmented{width:100%}
 .recovery[open]{display:flex;flex-direction:column;gap:12px}
 .recovery-key{display:block;padding:12px 14px;border-radius:14px;background:var(--surface-alt);border:1px solid var(--stroke);font:600 15px/24px ui-monospace,SFMono-Regular,Consolas,monospace;word-spacing:2px;user-select:all;overflow-wrap:anywhere;min-width:0}

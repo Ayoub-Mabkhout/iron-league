@@ -27,9 +27,10 @@ export async function signIn(name,password){
   await unlock(password);return account;
 }
 /** A new profile, or a password for the profile this browser already holds (claim). Returns the recovery key once. */
-export async function enrollPassword(name,password,{claim=false}={}){
+export async function enrollPassword(name,password,{claim=false,invite=null}={}){
   const params=vault.passwordParameters();
-  const account=await api(claim?'auth/claim':'auth/register',{body:{name,auth_secret:await vault.deriveAuthSecret(password,params),client_salt:params.salt}});
+  const body={name,auth_secret:await vault.deriveAuthSecret(password,params),client_salt:params.salt};if(!claim)body.invite=invite;
+  const account=await api(claim?'auth/claim':'auth/register',{body});
   const made=await vault.enroll(password,account.id,params);
   try{await api('vault/key-envelope',{method:'PUT',body:{base_revision:0,record:made.record}});unlocked=made.vault}
   catch{vault.destroy(made.vault);return {account,recoveryKey:null}}
@@ -63,8 +64,9 @@ export async function signOut(){
 
 /** The sign-in screen: sign in, or create a profile with a new name. With `claim`, the profile this browser joined by link
  * sets its password (the server asks for one before anything else works). */
-export function screen(root,done,claim=null){
-  let mode=claim?'claim':'signin';
+/** New profiles need an invite link from a member: it creates a profile, or sets the first password of the profile it was made for. */
+export function screen(root,done,claim=null,invite=null){
+  let mode=claim?'claim':invite?'create':'signin';
   const name=el('input',{class:'field',autocomplete:'username',maxLength:80,placeholder:'Name',attrs:{'aria-label':'Name',autocapitalize:'words'}});
   const pass=el('input',{class:'field',type:'password',autocomplete:'current-password',placeholder:'Password',attrs:{'aria-label':'Password'}});
   const again=el('input',{class:'field',type:'password',autocomplete:'new-password',placeholder:'Repeat password',attrs:{'aria-label':'Repeat password'}});
@@ -72,8 +74,10 @@ export function screen(root,done,claim=null){
   const email=el('input',{class:'field',type:'email',autocomplete:'email',placeholder:'Email for password reset (optional)',attrs:{'aria-label':'Email for password reset, optional','aria-describedby':'email-why'}});
   const why=el('p',{class:'hint small',text:EMAIL_WHY,attrs:{id:'email-why'}}),mailBox=el('div',{class:'auth-email'},email,why);
   const forgot=el('button',{type:'button',class:'link-btn',text:'Forgot password?'});forgot.onclick=()=>forgotPassword(name.value.trim());
+  const noInvite=el('p',{class:'hint',text:'To create a profile, open the invite link a member sent you. If you already have a profile, sign in with its name.'});
   const tabs=el('div',{class:'segmented',attrs:{role:'tablist'}}),form=el('form',{class:'auth-form'},name,pass,again,mailBox,go,note,forgot);
   const show=m=>{mode=m;note.textContent='';again.hidden=m==='signin';mailBox.hidden=m==='signin'||!emailRecovery;forgot.hidden=m!=='signin'||!emailRecovery;pass.autocomplete=m==='signin'?'current-password':'new-password';go.textContent={signin:'Sign in',create:'Create profile',claim:'Set password'}[m];
+    const blocked=m==='create'&&!invite;form.hidden=blocked;noInvite.hidden=!blocked;
     if(m==='claim'){tabs.hidden=true;return}
     tabs.replaceChildren(...[['signin','Sign in'],['create','New profile']].map(([k,t])=>{const b=el('button',{type:'button',class:'seg'+(k===m?' on':''),text:t,attrs:{role:'tab','aria-selected':String(k===m)}});b.onclick=()=>show(k);return b}))};
   form.onsubmit=async e=>{e.preventDefault();const n=name.value.trim(),p=pass.value,mail=email.value.trim();
@@ -81,13 +85,13 @@ export function screen(root,done,claim=null){
     if(mode!=='signin'&&mail&&!validEmail(mail)){note.textContent='Check the email address, or leave it empty.';email.focus();return}
     if(mode!=='signin'){if(p.length<10){note.textContent='Use at least 10 characters.';pass.focus();return}if(p!==again.value){note.textContent="The passwords don't match.";again.focus();return}}
     go.disabled=true;note.textContent={signin:'Signing in…',create:'Creating your profile…',claim:'Setting your password…'}[mode];
-    try{if(mode==='signin')done(await signIn(n,p));else{const r=await enrollPassword(n,p,{claim:mode==='claim'});let withEmail=false;
+    try{if(mode==='signin')done(await signIn(n,p));else{const r=await enrollPassword(n,p,{claim:mode==='claim',invite});let withEmail=false;
       if(mail&&emailRecovery)try{await saveEmail(mail);withEmail=true}catch{toast("Couldn't save the email. Add it later in Profile.")}
       recoveryKey(r.recoveryKey,()=>done(r.account),withEmail)}}
-    catch(err){go.disabled=false;note.textContent=mode!=='signin'&&err instanceof ApiError&&err.status===409?(mode==='claim'?'Enter the name this profile uses, exactly as shown in Friends.':'That name is taken. Sign in, or choose another name.'):message(err,'Your server refused the request.')}};
+    catch(err){go.disabled=false;note.textContent=mode!=='signin'&&err instanceof ApiError&&err.status===409?(mode==='claim'?'Enter the name this profile uses, exactly as shown in Friends.':invite?'That name is taken, or this link was made for a different profile. Check the name, or sign in.':'That name is taken. Sign in, or choose another name.'):message(err,'Your server refused the request.')}};
   if(claim?.name)name.value=claim.name;show(mode);
   root.replaceChildren(el('main',{class:'join'},el('span',{class:'mark'},icon('barbell')),el('h1',{text:claim?'Set a password':'Iron League'}),
-    el('p',{class:'hint',text:claim?'Iron League now signs in with your name and a password. Your workouts stay with this profile, and the password never leaves this device.':'Your password never leaves this device.'}),tabs,form));
+    el('p',{class:'hint',text:claim?'Iron League now signs in with your name and a password. Your workouts stay with this profile, and the password never leaves this device.':invite?'Choose your name and a password. If this link was made for your existing profile, use that profile\u2019s name. Your password never leaves this device.':'Your password never leaves this device.'}),tabs,noInvite,form));
   setTimeout(()=>(claim?.name?pass:name).focus(),60);
 }
 

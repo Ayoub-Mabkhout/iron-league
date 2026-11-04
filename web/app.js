@@ -48,17 +48,17 @@ async function boot(){
   let account=null;
   try{account=await api('me')}
   catch(e){
-    if(e instanceof ApiError&&e.status===401){try{localStorage.removeItem(KNOWN)}catch{}if(await auth.enabled())signIn();else join();return}
+    if(e instanceof ApiError&&e.status===401){try{localStorage.removeItem(KNOWN)}catch{}if(await auth.enabled()){const invite=params.get('invite');clean('invite');signIn(invite)}else join();return}
     if(e instanceof ApiError&&e.status===403&&await auth.enabled()){auth.screen(app,account=>{remember(account);start(account)},{name:known()?.name||''});return}
     account=known();if(!account){app.replaceChildren(el('div',{class:'boot'},el('p',{text:'Connect to the internet to open Iron League for the first time.'})));return}
   }
-  if((params.has('switch')||params.has('invite'))&&await auth.enabled()){clean('switch');clean('invite');signIn();return}
+  if((params.has('switch')||params.has('invite'))&&await auth.enabled()){const invite=params.get('invite');clean('switch');clean('invite');signIn(invite);return}
   if(params.has('invite')||params.has('switch')){join();return}
   remember(account);start(account);
 }
 function clean(key){params.delete(key);const q=params.toString();history.replaceState(history.state,'',location.pathname+(q?'?'+q:''))}
 
-function signIn(){auth.screen(app,account=>{remember(account);start(account)})}
+function signIn(invite=null){auth.screen(app,account=>{remember(account);start(account)},null,invite)}
 
 function join(){
   const invite=params.get('invite');

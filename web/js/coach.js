@@ -12,7 +12,7 @@ const pending=()=>{try{return JSON.parse(sessionStorage.getItem(PENDING))||{}}ca
 export function open(context={},live=null,prefill='',photos=[]){
   const wire={};for(const k of ['current_workout_id','sprint_id','template_id'])if(context[k])wire[k]=context[k];
   const state=el('span',{class:'chip-status',text:'Checking…'});
-  const p=page('Coach',{cls:'coach',actions:[state]});
+  const p=page('Coach',{cls:'coach',actions:[state],onclose:()=>{clearTimeout(timer);controller?.abort();document.removeEventListener('visibilitychange',wake)}});
   const items=el('div',{class:'chat',attrs:{'aria-live':'polite'}});p.body.append(items);
   const input=el('textarea',{class:'field chat-input',rows:1,placeholder:'Ask your coach',value:prefill||pending().text||'',attrs:{'aria-label':'Ask your coach',enterkeyhint:'send'}});
   input.oninput=()=>{input.style.height='auto';input.style.height=Math.min(140,input.scrollHeight)+'px'};
@@ -20,14 +20,24 @@ export function open(context={},live=null,prefill='',photos=[]){
   const attached=photos.length?el('p',{class:'hint',text:photos.length+(photos.length===1?' photo':' photos')+' attached for this question only'}):null;
   p.root.append(el('footer',{class:'chat-bar'},attached,el('div',{class:'chat-row'},input,send)));
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&matchMedia('(pointer:fine)').matches){e.preventDefault();ask()}});
-  let seen='',timer=0;
+  // The relay holds each request open until something in the conversation changes, so replies appear as soon as they
+  // are written. An older relay without versions falls back to a 5 s timer; errors back off from 2 s to 30 s.
+  let seen='',timer=0,version=null,controller=null,backoff=0;
   async function poll(){
-    if(p.closed)return;
-    try{const r=await api('trainer/conversation?limit=50');const on=!!r.status?.available;state.textContent=on?'Online':'Offline';state.dataset.on=String(on);
-      const key=JSON.stringify([on,r.items]);if(key!==seen){seen=key;paint(r.items||[],on);requestAnimationFrame(()=>p.body.scrollTo({top:p.body.scrollHeight,behavior:'smooth'}))}}
-    catch{state.textContent='No connection';state.dataset.on='false'}
-    timer=setTimeout(poll,5000);
+    if(p.closed||document.visibilityState==='hidden')return;
+    controller=new AbortController();const mine=controller;let delay=5000;
+    try{const r=await api('trainer/conversation?limit=50'+(version!=null?'&since='+encodeURIComponent(version)+'&wait=25':''),{signal:mine.signal});
+      if(mine!==controller)return;backoff=0;
+      const on=!!r.status?.available;state.textContent=on?'Online':'Offline';state.dataset.on=String(on);
+      const key=JSON.stringify([on,r.items]);if(key!==seen){seen=key;paint(r.items||[],on);requestAnimationFrame(()=>p.body.scrollTo({top:p.body.scrollHeight,behavior:'smooth'}))}
+      if(r.version!=null){version=r.version;delay=0}}
+    catch{if(mine!==controller||mine.signal.aborted)return;state.textContent='No connection';state.dataset.on='false';backoff=Math.min(30000,backoff?backoff*2:2000);delay=backoff}
+    timer=setTimeout(poll,delay);
   }
+  /** Ask again right away, dropping any request still held open. */
+  function restart(){clearTimeout(timer);controller?.abort();controller=null;poll()}
+  const wake=()=>{if(document.visibilityState==='visible')restart();else{clearTimeout(timer);controller?.abort();controller=null}};
+  document.addEventListener('visibilitychange',wake);
   async function ask(){
     const text=input.value.trim();if(!text)return;send.disabled=true;
     // The same question keeps its ID across retries, so a slow network can't ask it twice.
@@ -36,7 +46,7 @@ export function open(context={},live=null,prefill='',photos=[]){
     try{const problem=await store.sync();if(problem&&problem!=='')throw new Error(problem);
       const result=await api('trainer/questions',{body:{id,text,photos,photo_approval:photos.length>0,context:wire}});
       if(result.state==='queued')toast('Message queued. Check this Coach chat for the reply.');
-      input.value='';input.style.height='';photos=[];attached?.remove();try{sessionStorage.removeItem(PENDING)}catch{}clearTimeout(timer);poll()}
+      input.value='';input.style.height='';photos=[];attached?.remove();try{sessionStorage.removeItem(PENDING)}catch{}restart()}
     catch(e){toast(e instanceof ApiError?(e.status===409?'Couldn’t queue this message. Your draft is still here.':'Your server refused the question.'):'No connection. Your draft is still here. Tap Send when connected.')}
     finally{send.disabled=false}
   }
@@ -62,7 +72,7 @@ export function open(context={},live=null,prefill='',photos=[]){
       apply.disabled=true;
       try{await api(`trainer/${encodeURIComponent(q.id)}/approve`,{body:{}});await store.sync();
         if(live)for(const x of list)if(x.kind==='workout'&&x.id===live.d.workout_id){if(x.deleted)live.discard();else live.adopt(x.data)}
-        nav.refresh();clearTimeout(timer);poll()}
+        nav.refresh();restart()}
       catch(e){toast(e instanceof ApiError?(e.status===409?'That changed since your coach answered. Ask again.':'Your server refused the change.'):'No connection. Nothing changed.')}
       finally{apply.disabled=false}};
     c.append(apply);

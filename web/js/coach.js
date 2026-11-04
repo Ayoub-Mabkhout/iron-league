@@ -4,6 +4,7 @@ import * as store from './store.js';
 import * as units from './units.js';
 import {api,ApiError} from './api.js';
 import {tile} from './art.js';
+import {markdown} from './markdown.js';
 import {nav} from './nav.js';
 
 const PENDING='train-coach-pending';
@@ -57,8 +58,8 @@ export function open(context={},live=null,prefill='',photos=[]){
     for(const q of shown){let entry=rendered.get(q.id);if(!entry){entry={mine:el('p',{class:'bubble mine'}),answer:el('div'),signature:''};rendered.set(q.id,entry)}
       const signature=JSON.stringify([q,online]);if(signature!==entry.signature){entry.signature=signature;entry.mine.textContent=q.question;const c=entry.answer;
         c.setAttribute('aria-busy',String(q.state==='running'));
-        if(q.state==='completed'){c.className='bubble coach';c.replaceChildren(el('p',{},...rich(q.answer)));proposals(c,q)}
-        else if(q.state==='running'&&q.partial_answer){c.className='bubble coach';c.replaceChildren(el('p',{text:q.partial_answer}),el('small',{class:'hint',text:'Answering…'}))}
+        if(q.state==='completed'){c.className='bubble coach';c.replaceChildren(el('div',{class:'md'},markdown(q.answer)));proposals(c,q)}
+        else if(q.state==='running'&&q.partial_answer){c.className='bubble coach';c.replaceChildren(el('div',{class:'md'},markdown(q.partial_answer)),el('small',{class:'hint',text:'Answering…'}))}
         else{const message=q.state==='failed'?"Your coach couldn't answer. Try again.":q.state==='queued'?
           (online?'Queued. The reply will appear here.':'Queued. The reply will appear here when the coach is back online.'):'Your coach is thinking…';
           c.className='bubble wait'+(q.state==='failed'?' failed':'');c.replaceChildren(document.createTextNode(message))}}
@@ -90,7 +91,6 @@ export function open(context={},live=null,prefill='',photos=[]){
   poll();setTimeout(()=>input.focus({preventScroll:true}),120);
 }
 /** The coach writes light Markdown; **bold** becomes bold text and everything else stays plain, never HTML. */
-function rich(text){return String(text||'').split(/\*\*(.+?)\*\*/g).map((part,i)=>i%2?el('strong',{text:part}):part)}
 function describe(kind,d){
   if(!d)return 'new '+kind;
   if(kind==='sprint')return d.name+' · '+d.phase+' · '+(d.target_sessions||0)+' workouts until '+d.end+(d.cycle?' · cycle of '+d.cycle.length:'');

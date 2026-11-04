@@ -1,10 +1,15 @@
 // Name and password sign-in. The password stays on this device: it derives an auth secret (PBKDF2 then HKDF, in
 // private-vault.js) and only that secret is sent. After signing in, the private vault is unlocked in memory for this tab.
-import {el,icon,button,toast,card,row} from './core.js';
+// A passkey can do the same without the password (passkeys.js), and so resets a forgotten password without a code.
+import {el,icon,button,toast,card,row,choiceDialog} from './core.js';
 import {api,ApiError} from './api.js';
 import * as vault from './private-vault.js';
+import * as passkeys from './passkeys.js';
 
 let available=null,unlocked=null,emailRecovery=false;
+// After a passkey sign-in or unlock in this tab: its ID and server secret, so a new password can be set without the old
+// one. Memory only, like the unlocked vault; cleared on sign-out.
+let proof=null;
 /** Whether this server has password sign-in switched on; it answers 404 while the feature is off. It also says whether
  * it can send password-reset emails; until then the email field stays hidden. */
 export async function enabled(){
@@ -40,6 +45,23 @@ async function unlock(password){
   try{const {record}=await api('vault/key-envelope');if(unlocked)vault.destroy(unlocked);unlocked=(await vault.unlock(password,record)).vault}catch{unlocked=null}
   return !!unlocked;
 }
+const passkeyMessage=(e,fallback)=>e instanceof passkeys.PasskeyError?(e.code==='cancelled'?'':e.message):e instanceof ApiError&&e.status===401?"This passkey isn't set up for Iron League. Sign in with your password, then add it in Profile.":message(e,fallback);
+/** Opens the vault with a passkey that has a copy of its key. Ids limit the prompt to those passkeys. */
+async function unlockWithPasskey(record,credentialId,prf){
+  try{const r=await vault.unlockWithPasskey(record,credentialId,prf);if(unlocked)vault.destroy(unlocked);unlocked=r.vault;proof={credentialId,authSecret:r.authSecret};return true}
+  catch{return false}
+}
+/** Discoverable passkey sign-in: the browser lists this site's passkeys, then the vault opens with the same passkey. */
+export async function signInWithPasskey(){
+  const {credentialId,prf}=await passkeys.get();
+  try{const authSecret=await vault.derivePasskeyAuthSecret(prf);
+    const account=await api('auth/passkey/login',{body:{credential_id:credentialId,auth_secret:authSecret}});
+    proof={credentialId,authSecret};
+    try{const {record}=await api('vault/key-envelope');await unlockWithPasskey(record,credentialId,prf)}catch{}
+    return account;
+  }finally{prf.fill(0)}
+}
+export const canSetNewPassword=()=>!!proof;
 /** Asks for the password to open private records in this tab (after a reload only the session cookie remains).
  * Resolves true once unlocked. The password stays on this device. */
 export function unlockDialog(){
@@ -49,14 +71,21 @@ export function unlockDialog(){
     const pass=el('input',{class:'field',type:'password',autocomplete:'current-password',placeholder:'Password',attrs:{'aria-label':'Password'}});
     let result=false;const finish=v=>{result=v;d.close()};
     const go=el('button',{class:'btn primary',type:'submit',text:'Unlock'});
-    const form=el('form',{},el('h3',{text:'Unlock your photos'}),note,pass,el('div',{class:'dialog-actions'},button('Cancel','btn ghost',()=>finish(false)),go));
+    const key=button('Use a passkey','btn wide',async()=>{key.disabled=true;note.textContent='Waiting for your passkey…';
+      try{const {record}=await api('vault/key-envelope'),ids=vault.passkeyIds(record);
+        if(!ids.length){note.textContent='No passkey can open your photos yet. Enter your password, then add a passkey in Profile.';return}
+        const {credentialId,prf}=await passkeys.get(ids);
+        try{if(await unlockWithPasskey(record,credentialId,prf)){pass.value='';finish(true)}else note.textContent='That passkey did not open your photos. Try your password.'}finally{prf.fill(0)}}
+      catch(e){note.textContent=passkeyMessage(e,"Couldn't use the passkey.")||'Enter your password, or try the passkey again.'}
+      finally{key.disabled=false}});
+    const form=el('form',{},el('h3',{text:'Unlock your photos'}),note,pass,passkeys.available()?key:null,el('div',{class:'dialog-actions'},button('Cancel','btn ghost',()=>finish(false)),go));
     form.onsubmit=async e=>{e.preventDefault();if(!pass.value){pass.focus();return}go.disabled=true;note.textContent='Unlocking…';
       if(await unlock(pass.value)){pass.value='';finish(true)}else{go.disabled=false;note.textContent='That password did not open your photos. Try again.';pass.select()}};
     d.addEventListener('close',()=>{d.remove();resolve(result)});d.append(form);document.body.append(d);d.showModal();setTimeout(()=>pass.focus(),40);
   });
 }
 export async function signOut(){
-  if(unlocked){vault.destroy(unlocked);unlocked=null}
+  if(unlocked){vault.destroy(unlocked);unlocked=null}proof=null;
   try{await api('auth/logout',{method:'POST',body:{}})}catch{}
   try{localStorage.removeItem('train-account')}catch{}
   location.replace(location.pathname);
@@ -73,10 +102,13 @@ export function screen(root,done,claim=null,invite=null){
   const go=el('button',{class:'btn primary wide',type:'submit'}),note=el('p',{class:'hint',attrs:{role:'status'}});
   const email=el('input',{class:'field',type:'email',autocomplete:'email',placeholder:'Email for password reset (optional)',attrs:{'aria-label':'Email for password reset, optional','aria-describedby':'email-why'}});
   const why=el('p',{class:'hint small',text:EMAIL_WHY,attrs:{id:'email-why'}}),mailBox=el('div',{class:'auth-email'},email,why);
-  const forgot=el('button',{type:'button',class:'link-btn',text:'Forgot password?'});forgot.onclick=()=>forgotPassword(name.value.trim());
+  const forgot=el('button',{type:'button',class:'link-btn',text:'Forgot password?'});forgot.onclick=()=>forgotPassword(name.value.trim(),done);
+  const withKey=button('Sign in with a passkey','btn wide',async()=>{withKey.disabled=true;note.textContent='Waiting for your passkey…';
+    try{done(await signInWithPasskey())}catch(err){withKey.disabled=false;note.textContent=passkeyMessage(err,"Couldn't sign in with the passkey.")}});
+  const canPasskey=passkeys.available();
   const noInvite=el('p',{class:'hint',text:'To create a profile, open the invite link a member sent you. If you already have a profile, sign in with its name.'});
-  const tabs=el('div',{class:'segmented',attrs:{role:'tablist'}}),form=el('form',{class:'auth-form'},name,pass,again,mailBox,go,note,forgot);
-  const show=m=>{mode=m;note.textContent='';again.hidden=m==='signin';mailBox.hidden=m==='signin'||!emailRecovery;forgot.hidden=m!=='signin'||!emailRecovery;pass.autocomplete=m==='signin'?'current-password':'new-password';go.textContent={signin:'Sign in',create:'Create profile',claim:'Set password'}[m];
+  const tabs=el('div',{class:'segmented',attrs:{role:'tablist'}}),form=el('form',{class:'auth-form'},name,pass,again,mailBox,go,withKey,note,forgot);
+  const show=m=>{mode=m;note.textContent='';again.hidden=m==='signin';mailBox.hidden=m==='signin'||!emailRecovery;forgot.hidden=m!=='signin'||!(emailRecovery||canPasskey);withKey.hidden=m!=='signin'||!canPasskey;pass.autocomplete=m==='signin'?'current-password':'new-password';go.textContent={signin:'Sign in',create:'Create profile',claim:'Set password'}[m];
     const blocked=m==='create'&&!invite;form.hidden=blocked;noInvite.hidden=!blocked;
     if(m==='claim'){tabs.hidden=true;return}
     tabs.replaceChildren(...[['signin','Sign in'],['create','New profile']].map(([k,t])=>{const b=el('button',{type:'button',class:'seg'+(k===m?' on':''),text:t,attrs:{role:'tab','aria-selected':String(k===m)}});b.onclick=()=>show(k);return b}))};
@@ -101,19 +133,96 @@ export function recoveryKey(key,next,withEmail=false){
   const d=el('dialog',{class:'dialog recovery'});const code=el('code',{class:'recovery-key',text:key.match(/.{1,4}/g).join(' ')});
   const copy=button('Copy','btn',async()=>{try{await navigator.clipboard.writeText(key);toast('Recovery key copied')}catch{toast('Select the key and copy it')}});
   const ok=button("I've saved it",'btn primary wide',()=>{d.close();d.remove();next()});
-  d.append(el('h3',{text:'Save your recovery key'}),el('p',{class:'dialog-text',text:withEmail?'Your email can reset your password. Your private records are encrypted with a key only you hold, so after a reset they open only with this recovery key. Keep it somewhere safe; Iron League cannot show it again.':'Keep it somewhere safe, like a password manager. It is the only way to open your private records if you forget your password, and Iron League cannot show it again.'}),code,copy,ok);
+  const easier=passkeys.available()?el('p',{class:'hint small',text:'A passkey is the easier way back in: add one in Profile and it signs you in, opens your photos and lets you choose a new password. Keep this key as a fallback for when no passkey device is at hand.'}):null;
+  d.append(el('h3',{text:'Save your recovery key'}),el('p',{class:'dialog-text',text:withEmail?'Your email can reset your password. Your private records are encrypted with a key only you hold, so after a reset they open only with this recovery key or a passkey. Keep it somewhere safe; Iron League cannot show it again.':'Keep it somewhere safe, like a password manager. Without a passkey, it is the only way to open your private records if you forget your password, and Iron League cannot show it again.'}),easier,code,copy,ok);
   d.addEventListener('cancel',e=>e.preventDefault());document.body.append(d);d.showModal();
 }
 
-/** Asks the server to email a reset link. The answer is the same whether or not the name has an email, so it can't be
- * used to learn who registered one. */
-function forgotPassword(prefill){
-  const d=el('dialog',{class:'dialog'}),name=el('input',{class:'field',value:prefill,placeholder:'Name',attrs:{'aria-label':'Name'}}),note=el('p',{class:'dialog-text',text:'We will email a reset link to the address saved on this profile.'});
-  const send=button('Send link','btn primary',async()=>{const n=name.value.trim();if(!n){name.focus();return}send.disabled=true;
-    try{await api('auth/recovery/email',{body:{name:n}});note.textContent='If that profile has a recovery email, a link is on its way. It works once and expires soon.';send.hidden=true}
-    catch(e){note.textContent=message(e,"Couldn't send the link.");send.disabled=false}});
-  d.append(el('h3',{text:'Reset your password'}),note,name,el('div',{class:'dialog-actions'},button('Close','btn ghost',()=>{d.close();d.remove()}),send));
+/** A forgotten password: sign in with a passkey and choose a new one, or (where the server sends email) ask for a link.
+ * The email answer is the same whether or not the name has an email, so it can't be used to learn who registered one. */
+function forgotPassword(prefill,done){
+  const d=el('dialog',{class:'dialog'}),close=()=>{d.close();d.remove()},parts=[el('h3',{text:'Reset your password'})];
+  if(passkeys.available()){
+    const status=el('p',{class:'hint small',attrs:{role:'status'}});
+    const go=button('Sign in with a passkey','btn primary wide',async()=>{go.disabled=true;status.textContent='Waiting for your passkey…';
+      try{const account=await signInWithPasskey();close();done(account);newPasswordDialog()}
+      catch(e){go.disabled=false;status.textContent=passkeyMessage(e,"Couldn't sign in with the passkey.")}});
+    parts.push(el('p',{class:'dialog-text',text:'Sign in with your passkey, then choose a new password. Your photos stay readable.'}),go,status);
+  }
+  let send=null;
+  if(emailRecovery){
+    const name=el('input',{class:'field',value:prefill,placeholder:'Name',attrs:{'aria-label':'Name'}}),note=el('p',{class:'dialog-text',text:'Or we will email a reset link to the address saved on this profile.'});
+    send=button('Send link','btn primary',async()=>{const n=name.value.trim();if(!n){name.focus();return}send.disabled=true;
+      try{await api('auth/recovery/email',{body:{name:n}});note.textContent='If that profile has a recovery email, a link is on its way. It works once and expires soon.';send.hidden=true}
+      catch(e){note.textContent=message(e,"Couldn't send the link.");send.disabled=false}});
+    parts.push(note,name);
+  }
+  if(parts.length===1)parts.push(el('p',{class:'dialog-text',text:'Use your recovery key from the device where you set your password, or ask a member for a new invite link.'}));
+  d.append(...parts,el('div',{class:'dialog-actions'},button('Close','btn ghost',close),send));
   document.body.append(d);d.showModal();
+}
+
+/** After a passkey sign-in or unlock: a new password without the old one. The vault is re-wrapped for it (passkeys kept),
+ * the server replaces the password and signs out other sessions, then the re-wrapped vault record is saved. */
+export function newPasswordDialog(){
+  if(!proof){toast('Sign in with a passkey first.');return}
+  const d=el('dialog',{class:'dialog'}),note=el('p',{class:'dialog-text',text:'Your passkey confirmed it is you. Choose a new password; other devices will be signed out.',attrs:{role:'status'}});
+  const pass=el('input',{class:'field',type:'password',autocomplete:'new-password',placeholder:'New password',attrs:{'aria-label':'New password'}});
+  const again=el('input',{class:'field',type:'password',autocomplete:'new-password',placeholder:'Repeat password',attrs:{'aria-label':'Repeat password'}});
+  const go=el('button',{class:'btn primary',type:'submit',text:'Set new password'});
+  const form=el('form',{},el('h3',{text:'Set a new password'}),note,pass,again,el('div',{class:'dialog-actions'},button('Cancel','btn ghost',()=>d.close()),go));
+  form.onsubmit=async e=>{e.preventDefault();const p=pass.value;
+    if(p.length<10){note.textContent='Use at least 10 characters.';pass.focus();return}if(p!==again.value){note.textContent="The passwords don't match.";again.focus();return}
+    go.disabled=true;note.textContent='Setting your password…';
+    try{await setNewPassword(p);pass.value=again.value='';d.close();toast('New password set. Other devices are signed out.')}
+    catch(err){go.disabled=false;note.textContent=err?.partial||message(err,"Couldn't set the password.")}};
+  d.addEventListener('close',()=>d.remove());d.append(form);document.body.append(d);d.showModal();setTimeout(()=>pass.focus(),40);
+}
+async function setNewPassword(password){
+  const params=vault.passwordParameters();let envelope=null;
+  try{envelope=await api('vault/key-envelope')}catch(e){if(!(e instanceof ApiError&&e.status===404))throw e}
+  // With a vault, the new wrapper must be ready before the server switches passwords; it needs the unlocked key.
+  if(envelope&&!unlocked)throw Object.assign(new Error('locked'),{partial:'Unlock your photos with the passkey first, then try again.'});
+  const changed=envelope?await vault.changePassword(unlocked,envelope.record,password,params):{authSecret:await vault.deriveAuthSecret(password,params)};
+  await api('auth/passkey/reset-password',{body:{credential_id:proof.credentialId,passkey_auth_secret:proof.authSecret,auth_secret:changed.authSecret,client_salt:params.salt}});
+  if(!envelope)return;
+  try{await api('vault/key-envelope',{method:'PUT',body:{base_revision:envelope.revision,record:changed.record}})}
+  catch{throw Object.assign(new Error('partial'),{partial:'Your new password is set, but your photos still open only with your passkey. Connect and set the password again to fix this.'})}
+}
+
+/** Profile list of passkeys with remove, and adding one for this device's password manager. */
+async function passkeySection(me){
+  const box=el('div',{class:'stack'}),list=el('div',{class:'stack'});
+  box.append(el('p',{class:'label',text:'Passkeys'}),el('p',{class:'hint small',text:'Sign in and open your encrypted photos with your fingerprint, face or screen lock, and choose a new password if you forget yours. Passkeys sync through your password manager, such as Google Password Manager or iCloud Keychain.'}),list);
+  const day=t=>t?new Date(t*1000).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):null;
+  let items=[];
+  const render=()=>list.replaceChildren(...items.map((item,i)=>el('div',{class:'passkey-item'},
+    el('span',{class:'grow'},el('strong',{text:'Passkey '+(i+1)}),el('small',{text:'Added '+day(item.created)+(item.last_used?' · last used '+day(item.last_used):' · not used yet')})),
+    button('Remove','btn small ghost',()=>remove(item.credential_id),{'aria-label':'Remove passkey '+(i+1)}))));
+  const load=async()=>{try{items=(await api('auth/passkeys')).items}catch{items=[]}render()};
+  const remove=async id=>{if(await choiceDialog('Remove this passkey?',['Remove passkey'])!==0)return;
+    try{await api('auth/passkeys/'+encodeURIComponent(id),{method:'DELETE'})}catch(e){if(!(e instanceof ApiError&&e.status===404)){toast(message(e,"Couldn't remove the passkey."));return}}
+    try{const {record,revision}=await api('vault/key-envelope');if(vault.passkeyIds(record).includes(id))await api('vault/key-envelope',{method:'PUT',body:{base_revision:revision,record:vault.removePasskey(record,id)}})}catch{}
+    if(proof?.credentialId===id)proof=null;passkeys.forget(id);toast('Passkey removed');load()};
+  const add=button('Add a passkey','btn wide',async()=>{add.disabled=true;
+    try{if(await addPasskey(me,items.map(i=>i.credential_id))){toast('Passkey added');await load()}}
+    catch(e){const text=passkeyMessage(e,"Couldn't add the passkey.");if(text)toast(text)}finally{add.disabled=false}});
+  if(passkeys.available())box.append(add);else box.append(el('p',{class:'hint small',text:"This browser can't use passkeys. Keep your recovery key."}));
+  if(proof)box.append(button('Set a new password','btn wide',()=>newPasswordDialog()));
+  await load();return box;
+}
+/** Registers a passkey: its vault copy is saved first, then its sign-in secret, so a passkey that can sign in can always
+ * open the vault. Wrappers whose registration never finished are dropped on the way. */
+async function addPasskey(me,known){
+  if(!unlocked&&!await unlockDialog())return false;
+  const {record,revision}=await api('vault/key-envelope');
+  const made=await passkeys.create(me,known);
+  try{const current={...record,passkeys:(record.passkeys||[]).filter(item=>known.includes(item.credentialId))};
+    const next=await vault.addPasskey(unlocked,current,made.credentialId,made.prf);
+    await api('vault/key-envelope',{method:'PUT',body:{base_revision:revision,record:next.record}});
+    await api('auth/passkeys',{body:{credential_id:made.credentialId,auth_secret:next.authSecret}});
+    return true;
+  }catch(e){passkeys.forget(made.credentialId);throw e}finally{made.prf.fill(0)}
 }
 
 /** The page a reset link opens: a new password, and the recovery key if they have it, to reopen private records too. */
@@ -139,19 +248,22 @@ export function resetScreen(root,token,done){
 export async function accountCard(me){
   if(!await enabled())return null;
   const c=card(el('h3',{class:'card-title',text:'Sign-in'}));
+  // With password sign-in on, Profile is reachable only once the profile has a password (the server says so in /me).
+  const enrolled=me&&'privacy_status' in me;
   const pass=el('input',{class:'field',type:'password',autocomplete:'new-password',placeholder:'New password',attrs:{'aria-label':'New password'}});
   const again=el('input',{class:'field',type:'password',autocomplete:'new-password',placeholder:'Repeat password',attrs:{'aria-label':'Repeat password'}});
   const save=button('Set password','btn primary wide',async()=>{const p=pass.value;if(p.length<10){toast('Use at least 10 characters');return}if(p!==again.value){toast("The passwords don't match");return}
     save.disabled=true;try{const r=await enrollPassword(me.name,p,{claim:true});pass.value=again.value='';recoveryKey(r.recoveryKey,()=>toast('Password set. Sign in with '+me.name+' on any device.'));
       if(unlocked)import('./photos.js').then(m=>m.migrate()).catch(()=>{})}
     catch(e){toast(e instanceof ApiError&&e.status===409?'This profile already has a password.':message(e,"Couldn't set the password."))}finally{save.disabled=false}});
-  c.append(el('p',{class:'hint',text:'Set a password to sign in as '+me.name+' on another device without a link.'}),pass,again,save);
+  if(!enrolled)c.append(el('p',{class:'hint',text:'Set a password to sign in as '+me.name+' on another device without a link.'}),pass,again,save);
+  else c.append(await passkeySection(me));
   if(emailRecovery){let current=null;try{current=await api('auth/email')}catch{}
     const mail=el('input',{class:'field',type:'email',autocomplete:'email',value:current?.email||'',placeholder:'Recovery email (optional)',attrs:{'aria-label':'Recovery email, optional'}});
     const status=el('small',{class:'hint',text:current?.email?(current.verified?'Confirmed.':'Check your inbox to confirm this address.'):''});
     const keep=button('Save email','btn',async()=>{const v=mail.value.trim();if(v&&!validEmail(v)){toast('Check the email address');return}
       try{const r=await saveEmail(v);status.textContent=v?(r?.verified?'Confirmed.':'Check your inbox to confirm this address.'):'';toast(v?'Recovery email saved':'Recovery email removed')}catch(e){toast(message(e,"Couldn't save the email."))}});
     c.append(el('p',{class:'label',text:'Recovery email'}),el('p',{class:'hint small',text:EMAIL_WHY}),mail,status,keep)}
-  c.append(row('Sign out','Set a password first, or you will need a new link to get back in',()=>signOut()));
+  c.append(row('Sign out',enrolled?'Sign back in with your name and password, or a passkey':'Set a password first, or you will need a new link to get back in',()=>signOut()));
   return c;
 }

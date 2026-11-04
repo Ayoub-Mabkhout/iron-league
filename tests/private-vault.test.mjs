@@ -1,9 +1,10 @@
 import {before,test} from 'node:test';
 import assert from 'node:assert/strict';
-import {webcrypto} from 'node:crypto';
+import {webcrypto,createHash} from 'node:crypto';
 import {
   VERSION,KDF_VERSION,ITERATIONS,MAX_PLAINTEXT_BYTES,VaultError,passwordParameters,
   deriveAuthSecret,deriveRecoveryAuthSecret,authSecret,enroll,unlock,seal,open,sealJSON,openJSON,changePassword,rotateRecoveryKey,recover,destroy,
+  MAX_PASSKEYS,passkeyPrfSalt,derivePasskeyAuthSecret,addPasskey,unlockWithPasskey,removePasskey,passkeyIds,
 } from '../web/js/private-vault.js';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
@@ -152,4 +153,70 @@ test('oversized data and malformed encrypted envelopes are rejected before decry
   await assert.rejects(open(owner.vault,META,{...encrypted,nonceB64:'A'}),VaultError);
   await assert.rejects(open(owner.vault,META,{...encrypted,cipherB64:'A'.repeat(Math.ceil((MAX_PLAINTEXT_BYTES+16)*4/3)+1)}),VaultError);
   await assert.rejects(openJSON(owner.vault,META,await seal(owner.vault,META,'not JSON')),/not valid JSON/);
+});
+
+// A fixed fake PRF output stands in for what an authenticator returns after user verification.
+const PRF=new Uint8Array(32).fill(7),OTHER_PRF=new Uint8Array(32).fill(9);
+const CREDENTIAL=Buffer.from('synthetic-credential-1').toString('base64url'),SECOND=Buffer.from('synthetic-credential-2').toString('base64url');
+
+test('the PRF salt is fixed and the passkey auth secret is domain separated and independent of the profile',async()=>{
+  const salt=await passkeyPrfSalt();
+  assert.equal(Buffer.from(salt).toString('hex'),createHash('sha256').update('iron-league/passkey-prf/v1').digest('hex'));
+  const secret=await derivePasskeyAuthSecret(PRF);
+  assert.match(secret,/^[A-Za-z0-9_-]{43}$/);assert.equal(secret,await derivePasskeyAuthSecret(PRF.buffer.slice(0)));
+  assert.notEqual(secret,await derivePasskeyAuthSecret(OTHER_PRF));assert.notEqual(secret,Buffer.from(PRF).toString('base64url'));
+  await assert.rejects(derivePasskeyAuthSecret(new Uint8Array(16)),VaultError);await assert.rejects(derivePasskeyAuthSecret('text'),VaultError);
+});
+
+test('a passkey wraps the same master key and unlocks the vault without the password',async()=>{
+  const encrypted=await seal(owner.vault,META,'opens with a passkey');
+  const added=await addPasskey(owner.vault,owner.record,CREDENTIAL,PRF);
+  assert.equal(added.authSecret,await derivePasskeyAuthSecret(PRF));
+  assert.deepEqual(added.record.password,owner.record.password);assert.deepEqual(added.record.recovery,owner.record.recovery);
+  assert.deepEqual(passkeyIds(added.record),[CREDENTIAL]);
+  const wrapper=added.record.passkeys[0].wrappedMaster;
+  assert.equal(wrapper.kind,'vault-passkey-key');assert.equal(wrapper.objectId,owner.record.keyId);assert.equal(wrapper.revision,1);
+  assert.equal(Buffer.from(wrapper.cipherB64,'base64url').length,48);
+  const serialized=JSON.stringify(added.record);assert.ok(!serialized.includes(added.authSecret));assert.ok(!serialized.includes(Buffer.from(PRF).toString('base64url')));
+  const opened=await unlockWithPasskey(added.record,CREDENTIAL,PRF);
+  assert.equal(new TextDecoder().decode(await open(opened.vault,META,encrypted)),'opens with a passkey');destroy(opened.vault);
+  await assert.rejects(unlockWithPasskey(added.record,CREDENTIAL,OTHER_PRF),VaultError);
+  await assert.rejects(unlockWithPasskey(added.record,SECOND,PRF),VaultError);
+  await assert.rejects(addPasskey(owner.vault,added.record,CREDENTIAL,PRF),/already added/);
+  // A wrapper moved to another credential ID doesn't open: the KEK is bound to the credential.
+  const moved=clone(added.record);moved.passkeys[0].credentialId=SECOND;
+  await assert.rejects(unlockWithPasskey(moved,SECOND,PRF),VaultError);
+});
+
+test('changing the password and recovering keep passkeys; removing one needs no unlocked vault',async()=>{
+  const encrypted=await seal(owner.vault,META,'still the same key');
+  const one=await addPasskey(owner.vault,owner.record,CREDENTIAL,PRF),two=await addPasskey(owner.vault,one.record,SECOND,OTHER_PRF);
+  const changed=await changePassword(owner.vault,two.record,'a new synthetic password');
+  assert.deepEqual(changed.record.passkeys,two.record.passkeys);assert.equal(changed.record.password.wrappedMaster.revision,2);
+  const viaPasskey=await unlockWithPasskey(changed.record,SECOND,OTHER_PRF);
+  // A forgotten password: unlocked by passkey, then re-wrapped for a new password with new parameters.
+  const reset=await changePassword(viaPasskey.vault,changed.record,'reset after forgetting');
+  assert.deepEqual(reset.record.passkeys,two.record.passkeys);assert.notEqual(reset.record.password.parameters.salt,changed.record.password.parameters.salt);
+  const withNew=await unlock('reset after forgetting',reset.record);
+  assert.equal(new TextDecoder().decode(await open(withNew.vault,META,encrypted)),'still the same key');
+  await assert.rejects(unlock('a new synthetic password',reset.record),VaultError);
+  const rotated=await rotateRecoveryKey(viaPasskey.vault,reset.record);assert.deepEqual(rotated.record.passkeys,two.record.passkeys);
+  const recovered=await recover(rotated.recoveryKey,rotated.record,'recovered password');assert.deepEqual(recovered.record.passkeys,two.record.passkeys);
+  const removed=removePasskey(reset.record,CREDENTIAL);
+  assert.deepEqual(passkeyIds(removed),[SECOND]);assert.deepEqual(removed.password,reset.record.password);
+  await assert.rejects(unlockWithPasskey(removed,CREDENTIAL,PRF),VaultError);
+  assert.deepEqual(passkeyIds(removePasskey(owner.record,CREDENTIAL)),[]);
+  for(const v of [viaPasskey.vault,withNew.vault,recovered.vault])destroy(v);
+});
+
+test('malformed passkey wrappers and identifiers are rejected',async()=>{
+  const added=await addPasskey(owner.vault,owner.record,CREDENTIAL,PRF);
+  for(const mutate of [
+    r=>{r.passkeys={}},r=>{r.passkeys=[r.passkeys[0],r.passkeys[0]]},r=>{r.passkeys[0].credentialId='short'},
+    r=>{r.passkeys[0].wrappedMaster.kind='vault-password-key'},r=>{r.passkeys[0].wrappedMaster.revision=2},
+    r=>{r.passkeys[0].wrappedMaster.cipherB64=Buffer.alloc(64).toString('base64url')},
+    r=>{r.passkeys=Array.from({length:MAX_PASSKEYS+1},(_,i)=>({...r.passkeys[0],credentialId:Buffer.from('synthetic-credential-'+i).toString('base64url')}))},
+  ]){const record=clone(added.record);mutate(record);await assert.rejects(unlockWithPasskey(record,CREDENTIAL,PRF),VaultError)}
+  await assert.rejects(addPasskey(owner.vault,owner.record,'not base64url!',PRF),VaultError);
+  await assert.rejects(addPasskey(owner.vault,owner.record,CREDENTIAL,new Uint8Array(31)),VaultError);
 });

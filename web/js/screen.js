@@ -14,6 +14,7 @@ import {nav} from './nav.js';
 import * as settings from './settings.js';
 import {FIRST_SPRINT} from './setup.js';
 import * as daylight from './daylight.js';
+import * as auth from './auth.js';
 
 let root=null,loading=false,problem='',chosen=null,me=null;
 export function mount(node,account){root=node;me=account;render()}
@@ -203,6 +204,7 @@ export function profile(){
       if(d.goal_weight_min_kg&&d.goal_weight_max_kg&&d.goal_weight_max_kg<d.goal_weight_min_kg){toast('The goal range is reversed');return}
       d.goals=goals.value.split('\n').map(x=>x.trim()).filter(Boolean);store.putEntity('athlete','self',d);toast('Saved');refresh()}));
   p.body.append(appearance(),sharing(),reminders());
+  const signIn=el('div',{class:'stack'});p.body.append(signIn);auth.accountCard(me).then(c=>{if(c)signIn.append(c)});
   p.body.append(card(el('h3',{class:'card-title',text:'This device'}),el('p',{class:'hint',text:'Signed in as '+(me?.name||'you')+'. Your workouts are kept on this device until they sync.'}),
     row('Export my data','A JSON copy of everything you have logged',exportData)));
 }

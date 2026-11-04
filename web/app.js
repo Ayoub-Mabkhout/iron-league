@@ -11,6 +11,7 @@ import * as settings from './js/settings.js';
 import * as setup from './js/setup.js';
 import {nav} from './js/nav.js';
 import * as daylight from './js/daylight.js';
+import * as auth from './js/auth.js';
 
 daylight.start();daylight.onChange(()=>screen.render());
 
@@ -45,13 +46,17 @@ async function boot(){
   let account=null;
   try{account=await api('me')}
   catch(e){
-    if(e instanceof ApiError&&e.status===401){try{localStorage.removeItem(KNOWN)}catch{}join();return}
+    if(e instanceof ApiError&&e.status===401){try{localStorage.removeItem(KNOWN)}catch{}if(await auth.enabled())signIn();else join();return}
+    if(e instanceof ApiError&&e.status===403&&await auth.enabled()){auth.screen(app,account=>{remember(account);start(account)},{name:known()?.name||''});return}
     account=known();if(!account){app.replaceChildren(el('div',{class:'boot'},el('p',{text:'Connect to the internet to open Iron League for the first time.'})));return}
   }
+  if((params.has('switch')||params.has('invite'))&&await auth.enabled()){clean('switch');clean('invite');signIn();return}
   if(params.has('invite')||params.has('switch')){join();return}
   remember(account);start(account);
 }
 function clean(key){params.delete(key);const q=params.toString();history.replaceState(history.state,'',location.pathname+(q?'?'+q:''))}
+
+function signIn(){auth.screen(app,account=>{remember(account);start(account)})}
 
 function join(){
   const invite=params.get('invite');

@@ -44,7 +44,6 @@ function watchForUpdates(){
 
 async function boot(){
   if('serviceWorker' in navigator)watchForUpdates();
-  if(params.has('reset')&&await auth.enabled()){const token=params.get('reset');clean('reset');auth.resetScreen(app,token,account=>{remember(account);start(account)});return}
   let account=null;
   try{account=await api('me')}
   catch(e){

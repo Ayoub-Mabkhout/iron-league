@@ -22,14 +22,14 @@ export function open(context={},live=null,prefill='',photos=[]){
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&matchMedia('(pointer:fine)').matches){e.preventDefault();ask()}});
   // The relay holds each request open until something in the conversation changes, so replies appear as soon as they
   // are written. An older relay without versions falls back to a 5 s timer; errors back off from 2 s to 30 s.
-  let seen='',timer=0,version=null,controller=null,backoff=0;
+  let seen='',timer=0,version=null,controller=null,backoff=0;const rendered=new Map();
   async function poll(){
     if(p.closed||document.visibilityState==='hidden')return;
     controller=new AbortController();const mine=controller;let delay=5000;
     try{const r=await api('trainer/conversation?limit=50'+(version!=null?'&since='+encodeURIComponent(version)+'&wait=25':''),{signal:mine.signal});
       if(mine!==controller)return;backoff=0;
       const on=!!r.status?.available;state.textContent=on?'Online':'Offline';state.dataset.on=String(on);
-      const key=JSON.stringify([on,r.items]);if(key!==seen){seen=key;paint(r.items||[],on);requestAnimationFrame(()=>p.body.scrollTo({top:p.body.scrollHeight,behavior:'smooth'}))}
+      const key=JSON.stringify([on,r.items]);if(key!==seen){const tail=!seen||p.body.scrollTop+p.body.clientHeight>=p.body.scrollHeight-80;seen=key;paint(r.items||[],on);if(tail)requestAnimationFrame(()=>p.body.scrollTo({top:p.body.scrollHeight,behavior:'auto'}))}
       if(r.version!=null){version=r.version;delay=0}}
     catch{if(mine!==controller||mine.signal.aborted)return;state.textContent='No connection';state.dataset.on='false';backoff=Math.min(30000,backoff?backoff*2:2000);delay=backoff}
     timer=setTimeout(poll,delay);
@@ -52,12 +52,22 @@ export function open(context={},live=null,prefill='',photos=[]){
   }
   function paint(list,online){
     const shown=list.filter(q=>!['next_session_brief','sprint_brief'].includes(q.context?.purpose));
-    if(!shown.length){items.replaceChildren(el('p',{class:'empty',text:online?'Ask about a swap, fatigue, pain or your plan.':'The coach is offline. You can still send a message. The reply will appear in this chat when the coach is back.'}));return}
-    items.replaceChildren(...shown.flatMap(q=>{const mine=el('p',{class:'bubble mine',text:q.question});
-      if(q.state==='completed'){const c=el('div',{class:'bubble coach'},el('p',{},...rich(q.answer)));proposals(c,q);return [mine,c]}
-      const message=q.state==='failed'?"Your coach couldn't answer. Try again.":q.state==='queued'?
-        (online?'Queued. The reply will appear here.':'Queued. The reply will appear here when the coach is back online.'):'Your coach is thinking…';
-      return [mine,el('p',{class:'bubble wait'+(q.state==='failed'?' failed':''),text:message})]}));
+    if(!shown.length){rendered.clear();items.replaceChildren(el('p',{class:'empty',text:online?'Ask about a swap, fatigue, pain or your plan.':'The coach is offline. You can still send a message. The reply will appear in this chat when the coach is back.'}));return}
+    const wanted=[];
+    for(const q of shown){let entry=rendered.get(q.id);if(!entry){entry={mine:el('p',{class:'bubble mine'}),answer:el('div'),signature:''};rendered.set(q.id,entry)}
+      const signature=JSON.stringify([q,online]);if(signature!==entry.signature){entry.signature=signature;entry.mine.textContent=q.question;const c=entry.answer;
+        c.setAttribute('aria-busy',String(q.state==='running'));
+        if(q.state==='completed'){c.className='bubble coach';c.replaceChildren(el('p',{},...rich(q.answer)));proposals(c,q)}
+        else if(q.state==='running'&&q.partial_answer){c.className='bubble coach';c.replaceChildren(el('p',{text:q.partial_answer}),el('small',{class:'hint',text:'Answering…'}))}
+        else{const message=q.state==='failed'?"Your coach couldn't answer. Try again.":q.state==='queued'?
+          (online?'Queued. The reply will appear here.':'Queued. The reply will appear here when the coach is back online.'):'Your coach is thinking…';
+          c.className='bubble wait'+(q.state==='failed'?' failed':'');c.replaceChildren(document.createTextNode(message))}}
+      wanted.push(entry.mine,entry.answer);
+    }
+    // Keep the same bubbles attached as text arrives, including the user's scroll position and composer focus.
+    for(let i=0;i<wanted.length;i++)if(items.children[i]!==wanted[i])items.insertBefore(wanted[i],items.children[i]||null);
+    while(items.children.length>wanted.length)items.lastElementChild.remove();
+    const ids=new Set(shown.map(q=>q.id));for(const id of rendered.keys())if(!ids.has(id))rendered.delete(id);
   }
   /** Shows what each proposal would change next to what's there now; Apply takes them all, once. */
   function proposals(c,q){

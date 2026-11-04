@@ -212,17 +212,40 @@ async function passkeySection(me){
   await load();return box;
 }
 /** Registers a passkey: its vault copy is saved first, then its sign-in secret, so a passkey that can sign in can always
- * open the vault. Wrappers whose registration never finished are dropped on the way. */
+ * open the vault. Wrappers whose registration never finished are dropped on the way. The server also wants proof beyond
+ * the session cookie: this tab's passkey when it signed in or unlocked with a registered one, else the current password. */
 async function addPasskey(me,known){
-  if(!unlocked&&!await unlockDialog())return false;
+  let confirmed;
+  if(proof&&unlocked&&known.includes(proof.credentialId))confirmed={proof_credential_id:proof.credentialId,proof_auth_secret:proof.authSecret};
+  else{const secret=await confirmPassword(me);if(!secret)return false;confirmed={password_auth_secret:secret}}
   const {record,revision}=await api('vault/key-envelope');
   const made=await passkeys.create(me,known);
   try{const current={...record,passkeys:(record.passkeys||[]).filter(item=>known.includes(item.credentialId))};
     const next=await vault.addPasskey(unlocked,current,made.credentialId,made.prf);
     await api('vault/key-envelope',{method:'PUT',body:{base_revision:revision,record:next.record}});
-    await api('auth/passkeys',{body:{credential_id:made.credentialId,auth_secret:next.authSecret}});
+    await api('auth/passkeys',{body:{credential_id:made.credentialId,auth_secret:next.authSecret,...confirmed}});
     return true;
   }catch(e){passkeys.forget(made.credentialId);throw e}finally{made.prf.fill(0)}
+}
+/** One password prompt before adding a passkey. The password opens the vault here (which checks it before a passkey is
+ * made) and gives the auth secret the server verifies. Resolves that secret, or null when cancelled. */
+function confirmPassword(me){
+  return new Promise(resolve=>{
+    const d=el('dialog',{class:'dialog'}),note=el('p',{class:'dialog-text',text:'Confirm your password to add a passkey. It never leaves this device.',attrs:{role:'status'}});
+    const pass=el('input',{class:'field',type:'password',autocomplete:'current-password',placeholder:'Password',attrs:{'aria-label':'Password'}});
+    const go=el('button',{class:'btn primary',type:'submit',text:'Continue'});
+    let result=null;const finish=v=>{result=v;d.close()};
+    const form=el('form',{},el('h3',{text:'Confirm your password'}),note,pass,el('div',{class:'dialog-actions'},button('Cancel','btn ghost',()=>finish(null)),go));
+    form.onsubmit=async e=>{e.preventDefault();const p=pass.value;if(!p){pass.focus();return}go.disabled=true;note.textContent='Checking…';
+      try{const params=await api('auth/parameters?name='+encodeURIComponent(me.name)),secret=await vault.deriveAuthSecret(p,params);
+        // Check it against the vault without dropping a vault this tab already opened.
+        let ok;if(unlocked){const {record}=await api('vault/key-envelope');try{vault.destroy((await vault.unlock(p,record)).vault);ok=true}catch{ok=false}}else ok=await unlock(p);
+        if(ok){pass.value='';finish(secret);return}
+        note.textContent='That password is not right. Try again.'}
+      catch(err){note.textContent=message(err,"Couldn't check the password.")}
+      go.disabled=false;pass.select()};
+    d.addEventListener('close',()=>{d.remove();resolve(result)});d.append(form);document.body.append(d);d.showModal();setTimeout(()=>pass.focus(),40);
+  });
 }
 
 /** The page a reset link opens: a new password, and the recovery key if they have it, to reopen private records too. */

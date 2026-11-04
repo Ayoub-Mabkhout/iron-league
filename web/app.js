@@ -12,6 +12,7 @@ import * as setup from './js/setup.js';
 import {nav} from './js/nav.js';
 import * as daylight from './js/daylight.js';
 import * as auth from './js/auth.js';
+import * as photos from './js/photos.js';
 
 daylight.start();daylight.onChange(()=>screen.render());
 
@@ -84,6 +85,8 @@ async function start(account){
   store.onChange(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(screen.render);if(store.waiting()){clearTimeout(pushTimer);pushTimer=setTimeout(()=>store.sync(),1500)}});
   screen.refresh();
   settings.load().then(()=>screen.render());
+  // Signed in with a password in this tab: encrypt any older plaintext photos in the background.
+  if(auth.vaultHandle())photos.migrate().catch(()=>{});
   if(account.setup_complete===false)setup.open(account,()=>screen.render());
   addEventListener('online',()=>screen.refresh());
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')screen.refresh()});

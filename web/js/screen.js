@@ -15,6 +15,7 @@ import * as settings from './settings.js';
 import {FIRST_SPRINT} from './setup.js';
 import * as daylight from './daylight.js';
 import * as auth from './auth.js';
+import * as photos_ from './photos.js';
 
 let root=null,loading=false,problem='',chosen=null,me=null;
 export function mount(node,account){root=node;me=account;render()}
@@ -243,7 +244,7 @@ function reminders(){
     en.input.onchange=async()=>{if(!await save({enabled:en.input.checked}))en.input.checked=!en.input.checked;else if(en.input.checked)await enablePush(status)};
     roast.input.onchange=async()=>{if(roast.input.checked&&!await confirmDialog('Turn on Diss mode?','Reminders and some briefs may use crude, profane language. You can turn it off any time.','Turn on','Cancel')){roast.input.checked=false;return}if(!await save({roast:roast.input.checked}))roast.input.checked=!roast.input.checked};
     const photos=toggle('Reminder photos','Your Diss mode reminders may show one of the private photos you choose.',!!s.photos_enabled);
-    const pickRow=()=>row('Choose photos',(s.photo_ids||[]).length?plural(s.photo_ids.length,'photo')+' chosen':'None chosen yet',async()=>{const ids=await body.choosePhotos(s.photo_ids||[]);if(ids&&await save({photo_ids:ids})){toast('Photos saved');sync()}});
+    const pickRow=()=>row('Choose photos',(s.photo_ids||[]).length?plural(s.photo_ids.length,'photo')+' chosen':'None chosen yet',async()=>{const before=s.photo_ids||[],ids=await body.choosePhotos(before);if(ids&&await photos_.saveReminderPhotos(before,ids,()=>save({photo_ids:ids}))){toast('Photos saved');sync()}});
     const extra=el('div',{class:'stack nested'});
     const sync=()=>{extra.hidden=!roast.input.checked;extra.replaceChildren(...[photos.el,photos.input.checked?pickRow():null].filter(Boolean))};
     photos.input.onchange=async()=>{if(!await save({photos_enabled:photos.input.checked}))photos.input.checked=!photos.input.checked;sync()};

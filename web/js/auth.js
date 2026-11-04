@@ -37,6 +37,22 @@ export async function enrollPassword(name,password,{claim=false}={}){
 }
 async function unlock(password){
   try{const {record}=await api('vault/key-envelope');if(unlocked)vault.destroy(unlocked);unlocked=(await vault.unlock(password,record)).vault}catch{unlocked=null}
+  return !!unlocked;
+}
+/** Asks for the password to open private records in this tab (after a reload only the session cookie remains).
+ * Resolves true once unlocked. The password stays on this device. */
+export function unlockDialog(){
+  if(unlocked)return Promise.resolve(true);
+  return new Promise(resolve=>{
+    const d=el('dialog',{class:'dialog'}),note=el('p',{class:'dialog-text',text:'Your photos are encrypted on this device. Enter your password to open them.',attrs:{role:'status'}});
+    const pass=el('input',{class:'field',type:'password',autocomplete:'current-password',placeholder:'Password',attrs:{'aria-label':'Password'}});
+    let result=false;const finish=v=>{result=v;d.close()};
+    const go=el('button',{class:'btn primary',type:'submit',text:'Unlock'});
+    const form=el('form',{},el('h3',{text:'Unlock your photos'}),note,pass,el('div',{class:'dialog-actions'},button('Cancel','btn ghost',()=>finish(false)),go));
+    form.onsubmit=async e=>{e.preventDefault();if(!pass.value){pass.focus();return}go.disabled=true;note.textContent='Unlocking…';
+      if(await unlock(pass.value)){pass.value='';finish(true)}else{go.disabled=false;note.textContent='That password did not open your photos. Try again.';pass.select()}};
+    d.addEventListener('close',()=>{d.remove();resolve(result)});d.append(form);document.body.append(d);d.showModal();setTimeout(()=>pass.focus(),40);
+  });
 }
 export async function signOut(){
   if(unlocked){vault.destroy(unlocked);unlocked=null}
@@ -122,7 +138,8 @@ export async function accountCard(me){
   const pass=el('input',{class:'field',type:'password',autocomplete:'new-password',placeholder:'New password',attrs:{'aria-label':'New password'}});
   const again=el('input',{class:'field',type:'password',autocomplete:'new-password',placeholder:'Repeat password',attrs:{'aria-label':'Repeat password'}});
   const save=button('Set password','btn primary wide',async()=>{const p=pass.value;if(p.length<10){toast('Use at least 10 characters');return}if(p!==again.value){toast("The passwords don't match");return}
-    save.disabled=true;try{const r=await enrollPassword(me.name,p,{claim:true});pass.value=again.value='';recoveryKey(r.recoveryKey,()=>toast('Password set. Sign in with '+me.name+' on any device.'))}
+    save.disabled=true;try{const r=await enrollPassword(me.name,p,{claim:true});pass.value=again.value='';recoveryKey(r.recoveryKey,()=>toast('Password set. Sign in with '+me.name+' on any device.'));
+      if(unlocked)import('./photos.js').then(m=>m.migrate()).catch(()=>{})}
     catch(e){toast(e instanceof ApiError&&e.status===409?'This profile already has a password.':message(e,"Couldn't set the password."))}finally{save.disabled=false}});
   c.append(el('p',{class:'hint',text:'Set a password to sign in as '+me.name+' on another device without a link.'}),pass,again,save);
   if(emailRecovery){let current=null;try{current=await api('auth/email')}catch{}

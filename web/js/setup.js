@@ -8,6 +8,7 @@ import * as settings from './settings.js';
 import {iso} from './live.js';
 import {nav} from './nav.js';
 import {choosePhotos} from './body.js';
+import {saveReminderPhotos} from './photos.js';
 
 export const FIRST_SPRINT='Plan my first sprint. Ask me what I need to know about my goals, schedule and equipment, then propose the sprint and any exercises it needs.';
 const zone=()=>Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC';
@@ -57,7 +58,7 @@ export function open(account,done){
     return [el('h2',{class:'setup-title',text:'How Iron League treats you'}),el('p',{class:'hint',text:'Both stay off unless you turn them on. You can change either one later in Profile.'}),
       el('div',{class:'card'},diss.el,extra,timed.el),
       button('Continue','btn primary wide',async()=>{let ok=await settings.save({roast:diss.input.checked,scheduled_sprints:timed.input.checked});
-        if(photos.input.checked||ids.length)ok=await settings.save({photos_enabled:photos.input.checked,photo_ids:ids})&&ok;
+        if(photos.input.checked||ids.length)ok=await saveReminderPhotos(v.photo_ids||[],ids,()=>settings.save({photos_enabled:photos.input.checked,photo_ids:ids}))&&ok;
         if(!ok&&(diss.input.checked||timed.input.checked))toast('Saved once you are online. Check Profile later.');step=2;paint()}),
       button('Back','btn ghost wide',()=>{step=0;paint()})];
   }

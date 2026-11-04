@@ -6,6 +6,7 @@ import {api,ApiError} from './api.js';
 import {tile} from './art.js';
 import {markdown} from './markdown.js';
 import {nav} from './nav.js';
+import * as photoStore from './photos.js';
 
 const PENDING='train-coach-pending';
 const pending=()=>{try{return JSON.parse(sessionStorage.getItem(PENDING))||{}}catch{return {}}};
@@ -44,7 +45,9 @@ export function open(context={},live=null,prefill='',photos=[]){
     // The same question keeps its ID across retries, so a slow network can't ask it twice.
     const key=text+'\n'+JSON.stringify(wire)+'\n'+photos.join(',');const prior=pending();const id=prior.key===key?prior.id:uid();
     try{sessionStorage.setItem(PENDING,JSON.stringify({key,id,text}))}catch{}
-    try{const problem=await store.sync();if(problem&&problem!=='')throw new Error(problem);
+    try{// Encrypted photos get a plaintext copy for this question only; the server deletes it once the answer is written.
+      for(const photo of photos){const data=store.data('photo',photo);if(data&&!await photoStore.share({id:photo,data})){toast('Unlock your photos to ask about them.');return}}
+      const problem=await store.sync();if(problem&&problem!=='')throw new Error(problem);
       const result=await api('trainer/questions',{body:{id,text,photos,photo_approval:photos.length>0,context:wire}});
       if(result.state==='queued')toast('Message queued. Check this Coach chat for the reply.');
       input.value='';input.style.height='';photos=[];attached?.remove();try{sessionStorage.removeItem(PENDING)}catch{}restart()}

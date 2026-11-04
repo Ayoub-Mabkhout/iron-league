@@ -437,3 +437,5 @@ body{overflow-wrap:anywhere}
 .join .segmented{width:100%}
 .recovery[open]{display:flex;flex-direction:column;gap:12px}
 .recovery-key{display:block;padding:12px 14px;border-radius:14px;background:var(--surface-alt);border:1px solid var(--stroke);font:600 15px/24px ui-monospace,SFMono-Regular,Consolas,monospace;word-spacing:2px;user-select:all;overflow-wrap:anywhere;min-width:0}
+.auth-email{display:flex;flex-direction:column;gap:6px}.auth-email[hidden]{display:none}
+.link-btn{border:0;background:none;color:var(--accent);font-weight:650;font-size:14px;padding:8px;align-self:center;text-decoration:underline;text-underline-offset:3px}.link-btn[hidden]{display:none}

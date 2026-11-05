@@ -4,7 +4,7 @@ import {el,icon,iconButton,button,page,confirmDialog,toast,card,stat,pair,label,
 import * as store from './store.js';
 import * as units from './units.js';
 import {api,ApiError} from './api.js';
-import {crest,ridge,bodyMap,spark,tierIndex,tierOf,tierColor,tierInk,label as tierLabel,tile} from './art.js';
+import {crest,ridge,bodyMap,spark,tierIndex,tierOf,tierColor,tierInk,tierBright,label as tierLabel,tile} from './art.js';
 import {chart,epochDay} from './chart.js';
 import * as history from './history.js';
 import * as plan from './plan.js';
@@ -284,25 +284,43 @@ export async function reminder(id){
 
 /** Friends as a league: a podium, where you stand and who's next to pass, then everyone's athlete card. A card opens only when they share. */
 export async function standings(){
-  const p=page('Friends');const list=el('div',{class:'stack'},el('p',{class:'hint',text:'Loading…'}));p.body.append(list);
-  try{const {items}=await api('standings');const order=[...items].sort((a,b)=>(b.lifting_score??-1)-(a.lifting_score??-1));
+  const p=page('Friends');const list=el('div',{class:'stack'},el('p',{class:'hint',text:'Loading standings…'}));p.body.append(list);
+  try{const [{items},fresh]=await Promise.all([api('standings'),api('me').catch(()=>null)]);if(fresh)me={...me,...fresh};
+    const parts=[...alerts()];
+    if(!items?.length){list.replaceChildren(...parts,el('p',{class:'hint',text:'No members on the standings yet.'}));return}
+    const order=[...items].sort((a,b)=>(b.lifting_score??-1)-(a.lifting_score??-1));
     const at=order.findIndex(m=>m.id===me?.id),you=order[at];
-    const go=m=>m.id===me?.id?ranks():m.share_progress?friend(m.id,'versus',m.name):toast(m.name+' keeps their progress private');
-    const parts=[];if(order.filter(m=>m.lifting_score!=null).length>=2)parts.push(podium(order.slice(0,3),go));
+    const go=m=>m.id===me?.id?ranks():m.share_progress?friend(m.id,'versus'):toast(m.name+' keeps their progress private.');
+    if(order.filter(m=>m.lifting_score!=null).length>=2)parts.push(podium(order.slice(0,3),go));
     if(you)parts.push(standing(order,at));
-    parts.push(label('The league'),...order.map((m,i)=>athlete(m,i,you,go)),el('p',{class:'hint small',text:'Ordered by overall lifting rank. Turn on sharing in Profile so friends can open your profile.'}));
+    parts.push(label('The league'),...order.map((m,i)=>athlete(m,i,you,go)),
+      el('p',{class:'hint small',text:'Ordered by overall lifting rank. Friends who share their progress open to their profile.'+(me?.share_progress?'':' Turn on sharing in Profile so friends can open yours.')}));
     list.replaceChildren(...parts)}
   catch{list.replaceChildren(el('p',{class:'hint',text:'Connect to see your friends.'}))}
+}
+/** The compact competitive-notifications switch at the top of Friends, as on the phone. It shares the setting with Profile;
+ * a failed save puts the switch back, and this device's notification permission is offered only while it is on. */
+function alerts(){
+  const t=toggle('Competitive notifications',null,!!me?.rank_alerts);t.el.classList.add('alerts-row');t.input.setAttribute('aria-label','Competitive notifications');
+  const status=el('p',{class:'hint small',attrs:{role:'status'}}),device=el('div',{class:'stack',hidden:true},button('Turn on notifications on this device','btn quiet wide',()=>enablePush(status).then(check)),status);
+  async function check(){if(!t.input.checked){device.hidden=true;return}
+    try{const reg='serviceWorker' in navigator&&'PushManager' in window?await Promise.race([navigator.serviceWorker.ready,new Promise(r=>setTimeout(r,1500))]):null;
+      const sub=reg?await reg.pushManager.getSubscription():null;device.hidden=!!sub;if(!sub)pushStatus(status).catch(()=>{})}catch{device.hidden=true}}
+  t.input.onchange=async()=>{const want=t.input.checked;t.input.disabled=true;
+    try{me={...me,...await api('me',{method:'PATCH',body:{rank_alerts:want}})};t.input.checked=!!me.rank_alerts}catch{t.input.checked=!want;toast("Couldn't save notification settings.")}
+    t.input.disabled=false;check()};
+  check();return [t.el,device];
 }
 const initials=n=>(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
 const tierHue=score=>score==null?'var(--stroke-strong)':tierColor(tierOf(score)),inkOf=score=>score==null?'var(--muted)':tierInk(tierOf(score));
 const short=n=>String(n||'').replace(/ \((barbell|dumbbell|cable|machine)\)/i,'');
 /** A monogram ringed in the athlete's tier colour, with their crest pinned to it. */
-function avatar(name,score,size=44){
-  const a=el('span',{class:'avatar',attrs:{'aria-hidden':'true'}},el('span',{class:'avatar-face',text:initials(name)}));a.style.setProperty('--tier',tierHue(score));a.style.setProperty('--size',size+'px');
+function avatar(name,score,size=44,onHero=false){
+  const a=el('span',{class:'avatar',attrs:{'aria-hidden':'true'}},el('span',{class:'avatar-face',text:initials(name)}));
+  a.style.setProperty('--tier',onHero&&score!=null?tierBright(tierOf(score)):tierHue(score));a.style.setProperty('--size',size+'px');
   if(score!=null){const c=crest(tierOf(score),false,Math.round(size*.46));c.classList.add('avatar-crest');a.append(c)}return a}
 function podium(top,go){
-  const step=(m,place)=>{if(!m)return el('span',{class:'podium-slot empty'});const b=el('button',{type:'button',class:'podium-slot p'+place,attrs:{'aria-label':place+'. '+m.name+', '+(m.lifting_score==null?'unranked':tierLabel(m.lifting_score))}},
+  const step=(m,place)=>{if(!m)return el('span',{class:'podium-slot empty'});const b=el('button',{type:'button',class:'podium-slot p'+place,attrs:{'aria-label':place+'. '+m.name+(m.id===me?.id?', you':'')+', '+(m.lifting_score==null?'Unranked':tierLabel(m.lifting_score))}},
       avatar(m.name,m.lifting_score,place===1?64:50),el('strong',{class:'podium-name',text:m.name+(m.id===me?.id?' (you)':'')}),el('small',{class:'podium-tier',text:m.lifting_score==null?'Unranked':tierLabel(m.lifting_score)}),
       el('span',{class:'podium-block'},el('span',{text:String(place)})));b.style.setProperty('--tier',tierHue(m.lifting_score));b.style.setProperty('--ink',inkOf(m.lifting_score));b.onclick=()=>go(m);return b};
   return el('div',{class:'podium'},step(top[1],2),step(top[0],1),step(top[2],3));
@@ -314,9 +332,10 @@ function standing(order,at){
   if(s==null){c.append(el('p',{class:'league-line',text:'Log a hard set on a main lift to join the standings.'}));return c}
   if(above&&above.lifting_score!=null){const gap=above.lifting_score-s,lo=below?.lifting_score??Math.max(0,s-Math.max(gap,10)*2);
     c.append(el('p',{class:'league-line'},gap>0?gap+' points to pass ':'Level with ',el('strong',{text:above.name})));
-    const bar=el('div',{class:'league-bar'},el('span',{class:'league-fill'}),el('span',{class:'league-mark you',text:'You'}),el('span',{class:'league-mark them',text:initials(above.name)}));
-    const f=Math.max(.04,Math.min(.96,(s-lo)/Math.max(1,above.lifting_score-lo)));bar.firstChild.style.transform='scaleX('+f+')';bar.children[1].style.left=(f*100)+'%';c.append(bar)}
-  else c.append(el('p',{class:'league-line',text:below&&below.lifting_score!=null?'Top of the league, '+(s-below.lifting_score)+' points clear of '+below.name+'.':'Top of the league.'}));
+    const bar=el('div',{class:'league-bar',attrs:{role:'img','aria-label':gap>0?gap+' points behind '+above.name:'Level with '+above.name}},el('span',{class:'league-fill'}),el('span',{class:'league-mark them',text:initials(above.name)}),el('span',{class:'league-mark you',text:'You'}));
+    const f=Math.max(.04,Math.min(.96,(s-lo)/Math.max(1,above.lifting_score-lo)));bar.firstChild.style.transform='scaleX('+f+')';bar.lastChild.style.setProperty('--at',(f*100)+'%');c.append(bar)}
+  else if(below&&below.lifting_score!=null)c.append(el('p',{class:'league-line'},'Top of the league, '+(s-below.lifting_score)+' points clear of ',el('strong',{text:below.name}),'.'));
+  else c.append(el('p',{class:'league-line',text:'Top of the league.'}));
   return c;
 }
 /** One athlete: place, tier, running rank, sprint progress and how far they are from you. */
@@ -326,28 +345,35 @@ function athlete(m,i,you,go){
   const words=el('span',{class:'grow'},el('span',{class:'athlete-name'},el('strong',{text:m.name}),mine?el('span',{class:'athlete-tag you',text:'You'}):null,!open?el('span',{class:'athlete-tag',text:'Private'}):null),
     el('span',{class:'athlete-meta'},tier,m.running_score!=null?el('small',{text:'Running '+tierLabel(m.running_score)}):null));
   if(s){words.append(el('small',{class:'athlete-sprint',text:s.name+' · '+(s.completed??0)+(s.target_sessions?' of '+s.target_sessions:'')}));if(s.target_sessions)words.append(plan.progressBar((s.completed||0)/s.target_sessions))}
-  let delta=null;if(!mine&&score!=null&&you?.lifting_score!=null){const d=score-you.lifting_score;delta=el('span',{class:'delta '+(d>0?'ahead':d<0?'behind':'level'),text:d===0?'Level':(d>0?'+':'−')+Math.abs(d),attrs:{title:d>0?'Ahead of you':'Behind you'}})}
-  const b=el('button',{type:'button',class:'athlete'+(mine?' mine':'')+(open?'':' closed')},el('span',{class:'place',text:String(i+1)}),avatar(m.name,score,46),words,delta);
+  let delta=null,gap='';if(!mine&&score!=null&&you?.lifting_score!=null){const d=score-you.lifting_score;delta=el('span',{class:'delta '+(d>0?'ahead':d<0?'behind':'level'),text:d===0?'Level':(d>0?'+':'−')+Math.abs(d),attrs:{'aria-hidden':'true'}});
+    gap=d>0?', '+d+' points ahead of you':d<0?', '+(-d)+' points behind you':', level with you'}
+  const said=(i+1)+'. '+m.name+(mine?', you':'')+', '+(score==null?'Unranked':tierLabel(score))+gap+(open?'':', private');
+  const b=el('button',{type:'button',class:'athlete'+(mine?' mine':'')+(open?'':' closed'),attrs:{'aria-label':said}},el('span',{class:'place',text:String(i+1),attrs:{'aria-hidden':'true'}}),avatar(m.name,score,46),words,delta);
   b.style.setProperty('--tier',tierHue(score));b.onclick=()=>go(m);return b;
 }
-const STATUS={completed:['Done','var(--success)'],missed:['Missed','var(--danger)'],skipped:['Skipped','var(--muted)'],active:['Training now','var(--accent)'],upcoming:['Upcoming','var(--muted)']};
-/** One friend's athlete profile: a hero in their tier colour, then head-to-head with you, their sprint, and their ranks. */
-export async function friend(id,tab='versus',name){
-  const p=page(name||'Friend');const tabs=el('div',{class:'segmented',attrs:{role:'tablist'}}),body=el('div',{class:'stack'},el('p',{class:'hint',text:'Loading…'}));p.body.append(tabs,body);
+const STATUS={completed:['✓ Completed','var(--success)'],missed:['× Missed','var(--danger)'],skipped:['Skipped','var(--muted)'],active:['In progress','var(--accent)'],upcoming:['Upcoming','var(--muted)']};
+const TABS=[['versus','Head-to-head'],['sprint','Sprint'],['ranks','Ranks']];
+/** One friend's athlete profile: a hero in their tier colour, then head-to-head with you, their sprint, and their ranks.
+ * Only members who share their progress open; the server refuses the rest, and owner-only actions stay on the owner's phone. */
+export async function friend(id,tab='versus'){
+  if(!/^(owner|[a-f0-9]{32})$/.test(String(id||'')))return;
+  const p=page('Friend profile');const tabs=el('div',{class:'tabs',attrs:{role:'tablist','aria-label':'Profile sections'}}),body=el('div',{class:'stack',attrs:{role:'tabpanel'}},el('p',{class:'hint',text:'Loading profile…'}));p.body.append(body);
   let d;try{d=await api('profiles/'+encodeURIComponent(id))}
-  catch(e){tabs.remove();body.replaceChildren(el('p',{class:'hint',text:e instanceof ApiError&&e.status===404?'This friend keeps their progress private.':'Connect to see this.'}));return}
-  p.heading.textContent=d.name;p.body.insertBefore(athleteHero(d),tabs);
-  const show=key=>{tab=key;tabs.replaceChildren(...[['versus','Head-to-head'],['sprint','Sprint'],['ranks','Ranks']].map(([k,t])=>{const b=el('button',{type:'button',class:'seg'+(k===tab?' on':''),text:t,attrs:{role:'tab','aria-selected':String(k===tab)}});b.onclick=()=>show(k);return b}));
-    body.replaceChildren(...(tab==='ranks'?friendRanks(d):tab==='sprint'?friendSprint(d):versus(d)))};
+  catch(e){if(!p.closed)body.replaceChildren(el('p',{class:'hint',text:e instanceof ApiError&&e.status===404?'This athlete keeps their progress private.':'Connect to see this profile.'}));return}
+  if(p.closed)return;p.root.setAttribute('aria-label',d.name+', friend profile');p.body.insertBefore(athleteHero(d),body);p.body.insertBefore(tabs,body);
+  const show=key=>{tab=TABS.some(([k])=>k===key)?key:'versus';tabs.replaceChildren(...TABS.map(([k,t])=>{const on=k===tab,b=el('button',{type:'button',class:'tab'+(on?' on':''),text:t,attrs:{role:'tab','aria-selected':String(on)}});b.onclick=()=>{if(!on){haptic();show(k)}};return b}));
+    body.setAttribute('aria-label',TABS.find(([k])=>k===tab)[1]);body.replaceChildren(...(tab==='ranks'?friendRanks(d):tab==='sprint'?friendSprint(d):versus(d)))};
   show(tab);
 }
+/** Night lit by their tier's bright face, so pale and deep tiers both read on it in light and dark. */
 function athleteHero(d){
   const score=d.ranks?.lifting_score,lifts=(d.ranks?.lifts||[]).filter(l=>l.percentile!=null),pct=lifts.length?Math.round(lifts.reduce((a,l)=>a+l.percentile,0)/lifts.length):null,run=d.ranks?.running;
-  const h=el('div',{class:'athlete-hero'},el('div',{class:'athlete-hero-top'},avatar(d.name,score,72),el('div',{class:'grow'},el('h2',{text:d.name}),el('strong',{class:'athlete-hero-tier',text:score==null?'Unranked':tierLabel(score)}),pct!=null?el('small',{text:'Stronger than about '+pct+'% of lifters'}):null)),
+  const h=el('div',{class:'athlete-hero'+(score==null?' unranked':'')},el('div',{class:'athlete-hero-top'},avatar(d.name,score,72,true),el('div',{class:'grow'},el('h2',{text:d.name}),el('strong',{class:'athlete-hero-tier',text:score==null?'Unranked':tierLabel(score)}),pct!=null?el('small',{text:'Stronger than about '+pct+'% of lifters'}):null)),
     el('div',{class:'athlete-hero-stats'},heroStat(String(d.completed_workouts??0),'workouts'),heroStat(String((d.sprints||[]).filter(x=>x.status==='completed').length),'sprints'),heroStat(run?.tier||'—','running')));
-  h.style.setProperty('--tier',tierHue(score));return h;
+  if(score!=null)h.style.setProperty('--glow',tierBright(tierOf(score)));return h;
 }
-const heroStat=(v,l)=>el('span',{class:'hero-stat'},el('strong',{text:v}),el('small',{text:l}));
+/** Long values such as Grandmaster step down a size instead of being cut off on a narrow phone. */
+const heroStat=(v,l)=>el('span',{class:'hero-stat'+(v.length>11?' longer':v.length>8?' long':'')},el('strong',{text:v}),el('small',{text:l}));
 /** You against them: the ridge with both of you on it, then overall, running and each shared lift as a pair of bars. */
 function versus(d){
   const o=overview(),theirs=d.ranks||{},mine=o.aggregate_score,their=theirs.lifting_score,out=[];
@@ -357,7 +383,7 @@ function versus(d){
   for(const l of theirs.lifts||[]){const n=short(l.exercise_name||l.name);const m=mineBy.get(n.toLowerCase());rows.push([n,m?.score??null,l.score??null,m?.tier,l.tier])}
   const both=rows.slice(1).filter(r=>r[1]!=null&&r[2]!=null),won=both.filter(r=>r[1]>r[2]).length,lost=both.filter(r=>r[1]<r[2]).length;
   const verdict=!both.length?'Rank the same lifts to compare':won>lost?'You lead '+won+' of '+both.length:lost>won?d.name+' leads '+lost+' of '+both.length:'Dead even across '+both.length;
-  const c=card(el('div',{class:'vs-head'},el('span',{class:'vs-side you'},el('i'),'You'),el('strong',{class:'vs-verdict',text:verdict}),el('span',{class:'vs-side them'},d.name,el('i'))));
+  const c=card(el('div',{class:'vs-head'},el('span',{class:'vs-side you'},el('i'),el('span',{text:'You'})),el('strong',{class:'vs-verdict',text:verdict}),el('span',{class:'vs-side them'},el('span',{text:d.name}),el('i'))));
   c.classList.add('vs-card');c.style.setProperty('--them',tierHue(their));
   // Bars start a little below the lower score, so a 20-point gap reads as a gap rather than two full bars.
   for(const [n,a,b,ta,tb] of rows){const top=Math.max(a??0,b??0)||1,low=a!=null&&b!=null?Math.max(0,Math.min(a,b)-60):0,bar=(v,cls)=>{const s=el('span',{class:'vs-bar '+cls},el('span'));s.firstChild.style.transform='scaleX('+(v==null?0:Math.max(.04,(v-low)/Math.max(1,top-low)))+')';return s};
@@ -372,7 +398,7 @@ const fmtDay=iso=>iso?new Date(iso+'T12:00:00Z').toLocaleDateString(undefined,{d
 function friendSprint(d){
   const out=[el('div',{class:'stats'},stat(String(d.completed_workouts??0),'workouts'),stat(String((d.sprints||[]).length),'sprints'))],s=d.current_sprint;
   if(s)out.push(card(el('p',{class:'label',text:'Current sprint'}),el('h3',{class:'card-title big',text:s.name}),el('p',{class:'strong-line',text:(s.completed??0)+(s.target_sessions?' of '+s.target_sessions:'')+' workouts'}),s.target_sessions?plan.progressBar((s.completed||0)/s.target_sessions):null));
-  else out.push(el('p',{class:'hint',text:'No sprint running.'}));
+  else out.push(el('p',{class:'hint',text:'No active sprint.'}));
   const sched=(d.schedule||[]).slice().sort((a,b)=>String(a.starts_at||a.date).localeCompare(String(b.starts_at||b.date)));
   if(sched.length){const c=card(el('p',{class:'label',text:'Schedule'}));for(const x of sched){const [word,color]=STATUS[x.status]||[x.status,'var(--muted)'];const at=x.starts_at?new Date(x.starts_at):new Date(x.date+'T12:00:00');
       const tag=el('strong',{class:'sched-status',text:word});tag.style.color=color;
@@ -387,14 +413,14 @@ function friendRanks(d){
   const r=d.ranks||{},score=r.lifting_score,ranked=score!=null,out=[];
   out.push(el('div',{class:'ridge-card'},ridge(ranked?tierOf(score):-1),el('div',{class:'ridge-label'},el('small',{text:'Overall rank'}),el('strong',{text:ranked?tierLabel(score):'Unranked'}))));
   const run=r.running,runTier=run?.tier||(run?.score!=null?tierLabel(run.score):null);
-  if(run){const t=runTier?tierIndex(runTier):0,n=el('strong',{class:'rank-name',text:runTier||'Unranked'});if(runTier)n.style.color=tierColor(t);
+  if(run){const t=runTier?tierIndex(runTier):0,n=el('strong',{class:'rank-name',text:runTier||'Unranked'});if(runTier)n.style.color=tierInk(t);
     out.push(el('div',{class:'card run-rank'},crest(t,!runTier,48),el('div',{class:'grow'},el('small',{class:'label',text:'Running'}),n,run.percentile!=null?el('small',{text:'Faster than about '+run.percentile+'% of runners'}):null)))}
   const lifts=card(el('p',{class:'label',text:'Main lifts'}));
   for(const l of r.lifts||[]){const tier=l.tier||(l.score!=null?tierLabel(l.score):null),t=tier?tierIndex(tier):2,name=(l.exercise_name||l.name||'').replace(/ \(barbell\)/i,'');
-    const tag=tier?el('strong',{class:'lift-tier',text:tier}):null;if(tag)tag.style.color=tierColor(t);
+    const tag=tier?el('strong',{class:'lift-tier',text:tier}):null;if(tag)tag.style.color=tierInk(t);
     lifts.append(el('div',{class:'lift-row'},crest(t,!tier,36),el('span',{class:'grow'},el('strong',{text:name}),l.percentile!=null?el('small',{text:'Stronger than about '+l.percentile+'% of lifters'}):tier?null:el('small',{text:'Not ranked yet'})),tag))}
   if(!(r.lifts||[]).length)lifts.append(el('p',{class:'hint',text:'No ranked lifts yet.'}));out.push(lifts);
   const hues=[HUE.pink,HUE.blue,HUE.green,HUE.amber,HUE.violet,HUE.teal];
-  (d.progress?.lifts||[]).filter(l=>l.e1rm_series.length>1).forEach((l,i)=>{const c=chart({height:160,gap:45,format:v=>num(v)+' '+units.loadLabel(),label:l.name+' estimated max'});c.line(l.e1rm_series.map(x=>[epochDay(x.date),units.loadValue(x.value)]),hues[i%hues.length],2,'Estimated');out.push(card(el('h3',{class:'card-title',text:l.name}),c.framed()))});
+  (d.progress?.lifts||[]).filter(l=>l.e1rm_series.length>1).forEach((l,i)=>{const c=chart({height:160,gap:45,format:v=>num(v)+' '+units.loadLabel(),label:short(l.name)+' estimated max'});c.line(l.e1rm_series.map(x=>[epochDay(x.date),units.loadValue(x.value)]),hues[i%hues.length],2,'Estimated');out.push(card(el('h3',{class:'card-title',text:short(l.name)}),c.framed()))});
   return out;
 }

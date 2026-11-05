@@ -38,6 +38,8 @@ const dark=()=>document.documentElement.dataset.theme==='dark'||(!document.docum
 export function tierColor(t){return dark()||t!==2?COLORS[t][t===3&&!dark()?1:0]:COLORS[t][1]}
 /** Tier colour for text on the page: the deep shade in light mode so pale tiers stay readable. */
 export function tierInk(t){return dark()?COLORS[t][0]:COLORS[t][1]}
+/** The tier's bright face, for marks on the dark hero and ridge backgrounds in either theme. */
+export const tierBright=t=>COLORS[t][0];
 function gray(c){const n=parseInt(c.slice(1),16),y=Math.round(((n>>16&255)*3+(n>>8&255)*6+(n&255))/10/2+40);return `rgb(${y},${y},${y+8})`}
 /** The ten-step heraldic crest: a shield gains a crown, wings, a star and a second pair of wings. */
 export function crest(tier,locked,size=46){
@@ -51,16 +53,21 @@ export function crest(tier,locked,size=46){
   return svg('svg',{viewBox:'0 -4 120 134',width:size,height:Math.round(size*134/120),class:'crest','aria-hidden':'true'},...parts);
 }
 const CAMPS=[[.06,.86],[.15,.74],[.24,.76],[.34,.66],[.43,.58],[.53,.64],[.63,.42],[.71,.48],[.81,.28],[.91,.14]];
-/** The camps up a dusk ridge; those above the current rank are dimmed. A rival's view also pins where you stand. */
+let ridges=0;
+/** The camps up a dusk ridge; those above the current rank are dimmed. A rival's view also pins where you stand.
+ * Like the native view, the sky and hills stretch to the card while the crests keep their shape at their camps. */
 export function ridge(current,you=-1){
-  const W=360,H=176,hill=(fill,...p)=>svg('polygon',{points:[0,H,...p.map((v,i)=>i%2?v*H:v*W),W,H].join(' '),fill});
-  const sky=svg('defs',{},svg('linearGradient',{id:'dusk',x1:0,y1:0,x2:0,y2:1},svg('stop',{offset:0,'stop-color':'#1A1248'}),svg('stop',{offset:.65,'stop-color':'#5A2A9A'}),svg('stop',{offset:1,'stop-color':'#C95F8E'})));
-  const root=svg('svg',{viewBox:`0 0 ${W} ${H}`,class:'ridge',preserveAspectRatio:'xMidYMid slice','aria-hidden':'true'},sky,svg('rect',{width:W,height:H,fill:'url(#dusk)'}),
+  const W=360,H=176,id='dusk'+(++ridges),hill=(fill,...p)=>svg('polygon',{points:[0,H,...p.map((v,i)=>i%2?v*H:v*W),W,H].join(' '),fill});
+  const sky=svg('svg',{viewBox:`0 0 ${W} ${H}`,class:'ridge-sky',preserveAspectRatio:'none','aria-hidden':'true'},
+    svg('defs',{},svg('linearGradient',{id,x1:0,y1:0,x2:0,y2:1},svg('stop',{offset:0,'stop-color':'#1A1248'}),svg('stop',{offset:.65,'stop-color':'#5A2A9A'}),svg('stop',{offset:1,'stop-color':'#C95F8E'}))),
+    svg('rect',{width:W,height:H,fill:`url(#${id})`}),
     hill('#2A1460',0,.9,.2,.68,.3,.76,.43,.54,.53,.62,.63,.38,.71,.46,.91,.08,1,.24),hill(dark()?cssColor('var(--bg)'):'#1D1729',0,.98,.3,.88,.6,.94,1,.78));
-  CAMPS.forEach(([x,y],i)=>{const here=i===current,w=here?36:20,h=here?40:23,c=crest(i,i>current&&i>you,w);c.setAttribute('x',x*W-w/2);c.setAttribute('y',y*H-h/2);c.setAttribute('width',w);c.setAttribute('height',h);root.append(c)});
-  if(you>=0&&CAMPS[you]){const [x,y]=CAMPS[you],cx=x*W+(you===current?26:0),cy=y*H-(you===current?24:14);
-    root.append(svg('g',{class:'ridge-you'},svg('rect',{x:cx-17,y:cy-19,width:34,height:17,rx:8.5,fill:'#FFFFFF'}),svg('polygon',{points:`${cx-4},${cy-2.5} ${cx+4},${cy-2.5} ${cx},${cy+3}`,fill:'#FFFFFF'}),
-      svg('text',{x:cx,y:cy-6.8,'text-anchor':'middle','font-size':10,'font-weight':800,fill:'#3A2470','font-family':'Onest,system-ui,sans-serif'},'You')))}
+  const root=el('div',{class:'ridge',attrs:{'aria-hidden':'true'}},sky);
+  CAMPS.forEach(([x,y],i)=>{const here=i===current,w=here?36:20,c=crest(i,i>current&&i>you,w);c.classList.add('ridge-camp');
+    c.style.left=`calc(${x*100}% - ${w/2}px)`;c.style.top=`calc(${y*100}% - ${Math.round(w*134/120)/2}px)`;root.append(c)});
+  // A white "You" pill with a pointer, beside the camp when it is also the rival's, kept inside the card.
+  if(you>=0&&CAMPS[you]){const [x,y]=CAMPS[you],shared=you===current,pin=el('span',{class:'ridge-you',text:'You'});
+    pin.style.setProperty('--x',`calc(${x*100}% + ${shared?26:0}px)`);pin.style.setProperty('--y',`calc(${y*100}% - ${shared?24:14}px)`);root.append(pin)}
   return root;
 }
 const REGIONS=[['shoulder',14,26,25,26,22,44,11,42],['shoulder',71,26,82,26,85,42,74,44],['chest',26,26,46,26,46,44,24,42],['chest',50,26,70,26,72,42,50,44],['arm',11,45,22,46,19,70,8,68],['arm',74,46,85,45,88,68,77,70],['back',30,46,46,47,46,76,33,76],['back',50,47,66,46,63,76,50,76],['leg',30,79,47,79,45,118,32,118],['leg',49,79,66,79,64,118,51,118],['calf',33,121,44,121,43,146,35,146],['calf',52,121,63,121,61,146,53,146]];

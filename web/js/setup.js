@@ -41,7 +41,7 @@ export function open(account,done){
       if(w!=null&&w>0)store.putEntity('measurement',uid(),{measured_at:iso(Date.now(),zone()),kind:'bodyweight',value:Math.round((imperial?w*units.LB:w)*100)/100,unit:'kg',source:'Iron League web'});
       step=1;paint()});
     return [el('h2',{class:'setup-title',text:'About you'}),el('p',{class:'hint',text:'Ranks compare you with lifters of your sex and bodyweight. Your coach uses all of this. Leave anything blank you would rather not share.'}),
-      seg,el('label',{class:'field-label'},el('span',{text:'Age'}),age),el('div',{class:'row2'},el('label',{class:'field-label'},hl,height),el('label',{class:'field-label'},wl,weight)),
+      settings.privacyCard('h3'),seg,el('label',{class:'field-label'},el('span',{text:'Age'}),age),el('div',{class:'row2'},el('label',{class:'field-label'},hl,height),el('label',{class:'field-label'},wl,weight)),
       el('label',{class:'field-label'},el('span',{text:'Sex'}),sex),next];
   }
   /** Two independent opt-ins, both off unless chosen. */

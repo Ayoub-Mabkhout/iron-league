@@ -204,7 +204,7 @@ export function profile(){
       const lo=n(gMin.value),hi=n(gMax.value);set('goal_weight_min_kg',lo==null?null:Math.round(units.loadIn(lo)*10)/10);set('goal_weight_max_kg',hi==null?null:Math.round(units.loadIn(hi)*10)/10);
       if(d.goal_weight_min_kg&&d.goal_weight_max_kg&&d.goal_weight_max_kg<d.goal_weight_min_kg){toast('The goal range is reversed');return}
       d.goals=goals.value.split('\n').map(x=>x.trim()).filter(Boolean);store.putEntity('athlete','self',d);toast('Saved');refresh()}));
-  p.body.append(appearance(),sharing(),reminders());
+  p.body.append(settings.privacyCard(),appearance(),sharing(),reminders());
   const signIn=el('div',{class:'stack'});p.body.append(signIn);auth.accountCard(me).then(c=>{if(c)signIn.append(c)});
   p.body.append(card(el('h3',{class:'card-title',text:'This device'}),el('p',{class:'hint',text:'Signed in as '+(me?.name||'you')+'. Your workouts are kept on this device until they sync.'}),
     row('Export my data','A JSON copy of everything you have logged',exportData)));

@@ -2,7 +2,7 @@
 // A sent message shows at once and keeps its ID until the server confirms it, so a retry never asks twice; the coach's
 // answer streams into one bubble that becomes the final answer. Photos reach the coach only through an explicit,
 // per-question share of an encrypted photo (photos.js); the server deletes that copy once the answer is written.
-import {el,icon,iconButton,button,page,toast,uid,clock} from './core.js';
+import {el,page,toast,uid,clock} from './core.js';
 import * as store from './store.js';
 import * as units from './units.js';
 import {api,ApiError} from './api.js';
@@ -11,7 +11,7 @@ import {markdown} from './markdown.js';
 import {nav} from './nav.js';
 import * as photoStore from './photos.js';
 import {choosePhotos} from './body.js';
-import {dictation} from './dictation.js';
+import {composer,preview} from './composer.js';
 
 const PENDING='train-coach-pending',DRAFT='train-coach-draft',MAX_PHOTOS=6,PHOTOS_ONLY='Please look at the attached photos.';
 const read=k=>{try{return JSON.parse(sessionStorage.getItem(k))||{}}catch{return {}}};
@@ -38,43 +38,28 @@ export function open(context={},live=null,prefill='',photos=[]){
   const saved=read(DRAFT),prior=read(PENDING);
   let attached=(photos.length?photos:prefill?[]:saved.photos||[]).filter(id=>store.data('photo',id)).slice(0,MAX_PHOTOS);
   const chip=el('span',{class:'chip-status',attrs:{role:'status'}},el('span',{class:'dot'}),el('span',{}));
-  const p=page('Coach',{cls:'coach',actions:[chip],onclose:()=>{clearTimeout(timer);controller?.abort();voice?.abort();document.removeEventListener('visibilitychange',wake);resize.disconnect();document.documentElement.style.removeProperty('--composer')}});
+  const p=page('Coach',{cls:'coach',actions:[chip],onclose:()=>{clearTimeout(timer);controller?.abort();box?.stop();document.removeEventListener('visibilitychange',wake);resize.disconnect();document.documentElement.style.removeProperty('--composer')}});
   const items=el('div',{class:'chat',attrs:{'aria-live':'polite','aria-relevant':'additions text'}});p.body.append(items);
 
-  // The composer, as on Android: chosen photos, the message, then dictation, attach and Send.
-  const input=el('textarea',{class:'field chat-input',rows:2,maxLength:8000,placeholder:'Ask your coach',value:prefill||saved.text||prior.text||'',attrs:{'aria-label':'Ask your coach',enterkeyhint:'send'}});
-  const files=el('div',{class:'chat-files',attrs:{'aria-label':'Attached photos'}}),note=el('p',{class:'hint small chat-note',hidden:true});
-  const fit=()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight+2,140)+'px'};
-  const remember=()=>keep(DRAFT,input.value||attached.length?{text:input.value,photos:attached}:null);
-  input.addEventListener('input',()=>{fit();remember()});
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&matchMedia('(pointer:fine)').matches){e.preventDefault();ask()}});
-  let voice=null,base='';
-  voice=dictation({
-    words:(done,heard)=>{if(done)base=(base&&!/\s$/.test(base)?base+' ':base)+done;input.value=heard?(base&&!/\s$/.test(base)?base+' ':base)+heard:base;fit();remember()},
-    state:(on,local)=>{mic.classList.toggle('on',on);mic.replaceChildren(icon(on?'stop':'voice'));mic.setAttribute('aria-label',on?'Finish dictation':'Dictate message');mic.title=on?'Finish dictation':'Dictate message';
-      mic.setAttribute('aria-pressed',String(on));note.hidden=!on;note.textContent=local?'Listening on this device…':'Listening · your browser’s speech service writes it down'},
-    problem:e=>toast(e==='not-allowed'||e==='service-not-allowed'?'Allow the microphone to dictate.':e==='network'?'Dictation needs a connection.':e==='language-not-supported'?'Dictation isn’t available for your language here.':'Dictation stopped.')});
-  const mic=iconButton('voice','Dictate message',()=>{if(!voice||sending)return;if(!voice.listening)base=input.value;voice.toggle()},'chat-tool');
-  mic.setAttribute('aria-pressed','false');if(!voice)mic.hidden=true;
-  const attach=iconButton('attach','Attach photos',choose,'chat-tool');
-  const send=button('Send','btn primary chat-send',ask);
-  const bar=el('footer',{class:'chat-bar'},files,input,note,el('div',{class:'chat-actions'},mic,attach,send));p.root.append(bar);
+  // The shared composer: attached photos, the message, then attach, dictation and Send.
+  const remember=()=>keep(DRAFT,box.input.value||attached.length?{text:box.input.value,photos:attached}:null);
+  const box=composer({label:'Ask your coach',placeholder:'Ask your coach',value:prefill||saved.text||prior.text||'',maxLength:8000,
+    onSend:ask,onInput:remember,onAttach:choose,attachLabel:'Attach photos'});
+  const input=box.input,fit=box.fit;
+  const bar=el('footer',{class:'chat-bar'},box.root);p.root.append(bar);
   async function choose(){
     if(sending)return;
     const ids=await choosePhotos(attached,{title:'Attach photos',limit:MAX_PHOTOS,many:'six',action:'Attach to message',
       intro:'Choose progress photos for this question.',note:'When you send, a copy of each is shared with your coach for this question only and deleted once it answers.',
       count:n=>n+(n===1?' photo':' photos')+' for this question.'});
     if(ids){attached=ids;paintFiles();remember()}
-    setTimeout(()=>input.focus({preventScroll:true}),60);
+    setTimeout(()=>box.focus(),60);
   }
   function paintFiles(){
-    files.replaceChildren(...attached.map(id=>{const data=store.data('photo',id);if(!data)return null;
-      const x=iconButton('x','Remove photo',()=>{attached=attached.filter(a=>a!==id);paintFiles();remember()},'chat-file-x');
-      return el('div',{class:'chat-file'},photoStore.img({id,data},{alt:'Attached photo'}),x)}));
-    files.hidden=!attached.length;
-    if(attached.length)files.append(el('p',{class:'hint small chat-file-note',text:(attached.length===1?'1 photo':attached.length+' photos')+'. Your coach gets a copy for this question only.'}));
+    const shown=attached.map(id=>{const data=store.data('photo',id);return data?preview(photoStore.img({id,data},{alt:'Attached photo'}),'Remove photo',()=>{attached=attached.filter(a=>a!==id);paintFiles();remember()}):null}).filter(Boolean);
+    box.files(shown,shown.length?(shown.length===1?'1 photo':shown.length+' photos')+'. Your coach gets a copy for this question only.':'');
   }
-  paintFiles();requestAnimationFrame(fit);
+  paintFiles();
 
   // Follow the newest message while the reader is at the end, including when the keyboard or the composer resizes the list.
   let stick=true;
@@ -113,7 +98,6 @@ export function open(context={},live=null,prefill='',photos=[]){
   document.addEventListener('visibilitychange',wake);
 
   async function ask(){
-    if(voice?.listening){voice.stop();return}
     if(sending)return;
     const typed=input.value.trim();if(!typed&&!attached.length)return;
     const text=typed||PHOTOS_ONLY,chosen=attached.slice();
@@ -145,7 +129,7 @@ export function open(context={},live=null,prefill='',photos=[]){
     if(same){
       input.value='';fit();attached=[];paintFiles();keep(DRAFT,null)}
   }
-  function busy(on){sending=on;send.disabled=on;attach.disabled=on;mic.disabled=on;input.readOnly=on;send.textContent=on?'Sending…':'Send'}
+  function busy(on){sending=on;box.busy(on)}
 
   /** The server's conversation plus messages it hasn't confirmed yet, oldest first. */
   function display(){

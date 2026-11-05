@@ -1,8 +1,8 @@
 // Static app shell only. API responses, photos and anything under /train/api never enter this cache.
-const CACHE='train-static-v14',ROOT=new URL('./',self.location).pathname;
+const CACHE='train-static-v15',ROOT=new URL('./',self.location).pathname;
 const FILES=['','index.html','app.js','style.css','onest.ttf','manifest.webmanifest','icon.svg','icon-192.png','icon-512.png',
   'js/core.js','js/glyphs.js','js/api.js','js/store.js','js/units.js','js/art.js','js/chart.js','js/calendar.js','js/nav.js','js/sprints.js',
-  'js/settings.js','js/setup.js','js/live.js','js/history.js','js/plan.js','js/coach.js','js/body.js','js/screen.js','js/markdown.js','js/daylight.js','js/auth.js','js/private-vault.js','js/passkeys.js','js/photos.js','js/dictation.js'];
+  'js/settings.js','js/setup.js','js/live.js','js/history.js','js/plan.js','js/coach.js','js/body.js','js/screen.js','js/markdown.js','js/daylight.js','js/auth.js','js/private-vault.js','js/passkeys.js','js/photos.js','js/dictation.js','js/composer.js'];
 const ASSETS=FILES.map(f=>ROOT+f),API=ROOT+'api/';
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('train-static-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));

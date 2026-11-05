@@ -77,25 +77,28 @@ export function viewer(r){
   document.body.append(d);d.showModal();
 }
 export const upload=photoStore.upload;
-/** Choose up to twelve private photos for reminders. Resolves to the chosen IDs, or null when backed out. Uploading alone chooses nothing. */
-export function choosePhotos(current=[]){
+const REMINDERS={title:'Reminder photos',limit:12,many:'twelve',action:'Use these photos',intro:'Tap to choose the ones your reminders may show.',
+  note:'Photos you choose here are shared with your server so notifications can show them.',count:n=>n+' chosen. One appears per reminder, in turn.'};
+/** Choose up to twelve private photos for reminders (or, with options, for another purpose such as one coach question).
+ * Resolves to the chosen IDs, or null when backed out. Uploading alone chooses nothing. */
+export function choosePhotos(current=[],options={}){
+  const o={...REMINDERS,...options};
   return new Promise(resolve=>{
     const chosen=new Set(current);let result=null;
-    const done=button('Use these photos','btn primary wide',()=>{result=[...chosen];p.close()});
-    const p=page('Reminder photos',{onclose:()=>resolve(result)});
+    const done=button(o.action,'btn primary wide',()=>{result=[...chosen];p.close()});
+    const p=page(o.title,{onclose:()=>resolve(result)});
     const grid=el('div',{class:'photo-grid'}),count=el('p',{class:'hint small',attrs:{role:'status'}});
     const paint=()=>{const list=store.rows('photo').sort((a,b)=>String(b.data.captured_at).localeCompare(String(a.data.captured_at)));
       grid.replaceChildren(...list.map(r=>{const on=chosen.has(r.id),b=el('button',{type:'button',class:'photo'+(on?' on':''),attrs:{'aria-pressed':String(on),'aria-label':'Photo from '+new Date(r.data.captured_at).toLocaleDateString()}},
         photoStore.img(r,{loading:'lazy'}),el('span',{class:'photo-date',text:new Date(r.data.captured_at).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'2-digit'})}),el('span',{class:'tick'},icon('check')));
-        b.onclick=()=>{if(chosen.has(r.id))chosen.delete(r.id);else if(chosen.size>=12){toast('Choose up to twelve');return}else chosen.add(r.id);haptic(6);paint()};return b}));
+        b.onclick=()=>{if(chosen.has(r.id))chosen.delete(r.id);else if(chosen.size>=o.limit){toast('Choose up to '+o.many);return}else chosen.add(r.id);haptic(6);paint()};return b}));
       if(!list.length)grid.append(el('p',{class:'hint',text:'No photos yet. Upload one below.'}));
       unlock.hidden=!photoStore.locked(list);
-      count.textContent=chosen.size?chosen.size+' chosen. One appears per reminder, in turn.':'None chosen.'};
+      count.textContent=chosen.size?o.count(chosen.size):'None chosen.'};
     const file=el('input',{type:'file',accept:'image/jpeg,image/png,image/webp',multiple:true,class:'visually-hidden',attrs:{'aria-label':'Upload photos'}});
     file.onchange=async()=>{for(const f of file.files)await upload(f);file.value='';paint()};
     const unlock=button('Unlock photos','btn quiet wide',async()=>{if(await photoStore.unlock())paint()});
-    p.body.append(el('p',{class:'hint',text:'Tap to choose the ones your reminders may show.'}),
-      el('p',{class:'hint small',text:'Photos you choose here are shared with your server so notifications can show them.'}),unlock,grid,count,
+    p.body.append(el('p',{class:'hint',text:o.intro}),el('p',{class:'hint small',text:o.note}),unlock,grid,count,
       button(el('span',{},icon('plus'),'Upload photos'),'btn quiet wide',()=>file.click()),file,done);
     paint();
   });

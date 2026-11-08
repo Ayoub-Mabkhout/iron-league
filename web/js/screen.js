@@ -1,3 +1,4 @@
+import * as feed from './feed.js';
 // The dashboard and the pages it opens directly: the end-of-workout screen, ranks, running, profile with reminders, and the
 // shared standings. Ported from Android's WorkoutScreen; the next workout leads and everything else is one tap into its own page.
 import {el,icon,iconButton,button,page,confirmDialog,toast,card,stat,pair,label,row,HUE,cssColor,alpha,haptic,num,clock,plural,reduced} from './core.js';
@@ -284,7 +285,9 @@ export async function reminder(id){
 
 /** Friends as a league: a podium, where you stand and who's next to pass, then everyone's athlete card. A card opens only when they share. */
 export async function standings(){
-  const p=page('Friends');const list=el('div',{class:'stack'},el('p',{class:'hint',text:'Loading standings…'}));p.body.append(list);
+  const p=page('Friends');const list=el('div',{class:'stack'},el('p',{class:'hint',text:'Loading standings…'}));
+  const activity=button(el('span',{},icon('activity'),'Workout feed'),'btn quiet wide',()=>feed.open(me));
+  p.body.append(activity,list);
   try{const [{items},fresh]=await Promise.all([api('standings'),api('me').catch(()=>null)]);if(fresh)me={...me,...fresh};
     const parts=[...alerts()];
     if(!items?.length){list.replaceChildren(...parts,el('p',{class:'hint',text:'No members on the standings yet.'}));return}

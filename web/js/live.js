@@ -5,6 +5,8 @@ import * as store from './store.js';
 import * as units from './units.js';
 import {tile,exerciseHue,setTag} from './art.js';
 import {nav} from './nav.js';
+import {api as request} from './api.js';
+import * as proof from './proof.js';
 
 /** An ISO instant with the offset of the workout's own time zone. */
 export function iso(ms,zone){
@@ -246,10 +248,35 @@ export function open(d,{afterSave}={}){
     if(d.sprint_id)o.sprint_id=d.sprint_id;if(d.template_id)o.template_id=d.template_id;return o;
   }
   async function finish(){
+    if(finishBtn.disabled)return;
     const open=ex().reduce((n,e)=>n+e.sets.filter(s=>!s.done).length,0);
     if(!await confirmDialog('Finish workout?',open?open+(open===1?' unticked set':' unticked sets')+' will be left out.':'All sets are ticked.','Finish','Keep going'))return;
-    const w=workout('completed'),before=structuredClone(store.overview());store.putEntity('workout',d.workout_id,w);store.clearDraft();closed=true;clearTimeout(saveTimer);
-    current=null;p.onclose=null;p.close();clearInterval(timer);nav.finished(d.workout_id,w,before,structuredClone(d.exercises));
+    finishBtn.disabled=true;
+    try{
+      let w=workout('completed');
+      const before=structuredClone(store.overview());
+      if(await proof.required()){
+        const profile=await request('me');
+        if(await store.sync())throw new Error('Workout sync is unavailable.');
+        if(closed)return;
+        const existing=store.data('workout',d.workout_id);
+        if(existing?.status==='completed')w=existing;
+        else{
+          if(store.conflicts().some(item=>item.kind==='workout'&&item.id===d.workout_id))throw new Error('Resolve the workout edit conflict before finishing.');
+          const operation={mutation_id:uid(),kind:'workout',id:d.workout_id,base_revision:store.revision('workout',d.workout_id),deleted:false,data:w};
+          const receipt=await proof.capture(async(photo_base64,share)=>{
+            const result=await request('workout-finish',{body:{operation,photo_base64,share}});
+            return result.results[0];
+          },{canShare:!!profile.share_progress});
+          if(!receipt)return;
+          store.acceptWorkoutFinish(receipt);
+          w=receipt.data;
+        }
+      }else store.putEntity('workout',d.workout_id,w);
+      store.clearDraft();closed=true;clearTimeout(saveTimer);
+      current=null;p.onclose=null;p.close();clearInterval(timer);nav.finished(d.workout_id,w,before,structuredClone(d.exercises));
+    }catch(error){toast(error.message==='offline'?'Connect to finish this workout. Your workout is still saved here.':error.message||'Could not finish this workout.')}
+    finally{finishBtn.disabled=false}
   }
   async function cancel(){
     if(!await confirmDialog('Cancel workout?','Nothing from this session will be kept.','Cancel workout','Keep going',true))return;

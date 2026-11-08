@@ -8,6 +8,7 @@ export function privacyCard(headingLevel='h3'){
     el(headingLevel,{class:'card-title',text:'Privacy and encryption'}),
     el('p',{class:'hint',text:'Your browser encrypts progress photos before upload when your private vault is set up. Your password and recovery key stay on your device.'}),
     el('p',{class:'hint',text:'If you choose a photo for a coach question or a reminder, Iron League sends a separate copy the server can read for that purpose.'}),
+    el('p',{class:'hint',text:'When you share a workout, its camera photo is stored on the server outside your private vault. If you finish privately, the server verifies the photo and discards it.'}),
     el('p',{class:'hint',text:'Profile details such as age, height and weight, along with workouts and ranks, are processed by Iron League outside the encrypted photo vault.'}));
 }
 

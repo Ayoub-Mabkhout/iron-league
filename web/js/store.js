@@ -29,6 +29,12 @@ export function revision(kind,id){return cache.entities[kind]?.[id]?.revision||0
 export const overview=()=>cache.overview||{};
 function apply(kind,id,rev,deleted,value){(cache.entities[kind]||(cache.entities[kind]={}))[id]={revision:rev,deleted,data:value||{}}}
 
+// Photo-required completion commits through the relay before the local draft is cleared.
+export function acceptWorkoutFinish(result){
+  apply(result.kind,result.id,result.revision,result.deleted,result.data);
+  save.cache();emit();
+}
+
 /** Saves an edit here first and queues it; the same mutation ID is reused for every retry. */
 export function putEntity(kind,id,value){queue(kind,id,value,false)}
 export function deleteEntity(kind,id){queue(kind,id,data(kind,id),true)}

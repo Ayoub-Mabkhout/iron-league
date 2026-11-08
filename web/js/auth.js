@@ -89,7 +89,7 @@ export async function signOut(){
 
 /** The sign-in screen: sign in, or create a profile with a new name. With `claim`, the profile this browser joined by link
  * sets its password (the server asks for one before anything else works). */
-/** New profiles need an invite link from a member: it creates a profile, or sets the first password of the profile it was made for. */
+/** Public signup creates new profiles. A profile-specific link can set or reset a password. */
 export function screen(root,done,claim=null,invite=null){
   let mode=claim?'claim':invite?'create':'signin';
   const name=el('input',{class:'field',autocomplete:'username',maxLength:80,placeholder:'Name',attrs:{'aria-label':'Name',autocapitalize:'words'}});
@@ -100,36 +100,10 @@ export function screen(root,done,claim=null,invite=null){
   const withKey=button('Sign in with a passkey','btn wide',async()=>{withKey.disabled=true;note.textContent='Waiting for your passkey…';
     try{done(await signInWithPasskey())}catch(err){withKey.disabled=false;note.textContent=passkeyMessage(err,"Couldn't sign in with the passkey.")}});
   const canPasskey=passkeys.available();
-  const inviteInput=el('input',{class:'field',type:'url',required:true,placeholder:'Paste invite link',
-    attrs:{'aria-label':'Iron League invite link',autocapitalize:'none',spellcheck:'false'}});
-  const inviteNote=el('p',{class:'hint',attrs:{role:'status'}});
-  const noInvite=el('form',{class:'auth-form card'},
-    el('h2',{class:'card-title',text:'Create a profile'}),
-    el('p',{class:'hint',text:'Ask an Iron League member for an invite link, then paste it here.'}),
-    inviteInput,el('button',{class:'btn primary wide',type:'submit',text:'Continue with invite'}),inviteNote);
-  noInvite.onsubmit=e=>{
-    e.preventDefault();
-    let link;
-    try{link=new URL(inviteInput.value.trim())}catch{}
-    const cleanPath=path=>path.replace(/\/$/,'');
-    const token=link?.searchParams.get('invite');
-    if(!token||link.origin!==location.origin||cleanPath(link.pathname)!==cleanPath(location.pathname)){
-      inviteNote.textContent='Paste the full Iron League invite link you received.';
-      inviteInput.focus();
-      return;
-    }
-    invite=token;
-    inviteInput.value='';
-    inviteNote.textContent='';
-    show('create');
-    name.focus();
-  };
   const tabs=el('div',{class:'segmented',attrs:{role:'tablist'}}),form=el('form',{class:'auth-form'},name,pass,again,go,withKey,note,forgot);
   const show=m=>{mode=m;note.textContent='';again.hidden=m==='signin';forgot.hidden=m!=='signin';withKey.hidden=m!=='signin'||!canPasskey;pass.autocomplete=m==='signin'?'current-password':'new-password';go.textContent={signin:'Sign in',create:'Create profile',claim:'Set password'}[m];
-    const blocked=m==='create'&&!invite;form.hidden=blocked;noInvite.hidden=!blocked;
-    if(blocked)inviteInput.focus();
     if(m==='claim'){tabs.hidden=true;return}
-    tabs.replaceChildren(...[['signin','Sign in'],['create','New profile']].map(([k,t])=>{const b=el('button',{type:'button',class:'seg'+(k===m?' on':''),text:t,attrs:{role:'tab','aria-selected':String(k===m)}});b.onclick=()=>show(k);return b}))};
+    tabs.replaceChildren(...[['signin','Sign in'],['create','New profile']].map(([k,t])=>{const b=el('button',{type:'button',class:'seg'+(k===m?' on':''),text:t,attrs:{role:'tab','aria-selected':String(k===m)}});b.onclick=()=>{show(k);name.focus()};return b}))};
   form.onsubmit=async e=>{e.preventDefault();const n=name.value.trim(),p=pass.value;
     if(!n){name.focus();return}if(!p){pass.focus();return}
     if(mode!=='signin'){if(p.length<10){note.textContent='Use at least 10 characters.';pass.focus();return}if(p!==again.value){note.textContent="The passwords don't match.";again.focus();return}}
@@ -139,7 +113,7 @@ export function screen(root,done,claim=null,invite=null){
     catch(err){go.disabled=false;note.textContent=mode!=='signin'&&err instanceof ApiError&&err.status===409?(mode==='claim'?'Enter the name this profile uses, exactly as shown in Friends.':invite?'That name is taken, or this link was made for a different profile. Check the name, or sign in.':'That name is taken. Sign in, or choose another name.'):message(err,'Your server refused the request.')}};
   if(claim?.name)name.value=claim.name;show(mode);
   root.replaceChildren(el('main',{class:'join'},el('span',{class:'mark'},icon('barbell')),el('h1',{text:claim?'Set a password':'Iron League'}),
-    el('p',{class:'hint',text:claim?'Iron League now signs in with your name and a password. Your workouts stay with this profile, and the password never leaves this device.':invite?'Choose your name and a password. If this link was made for your existing profile, use that profile\u2019s name. Your password never leaves this device.':'Your password never leaves this device.'}),tabs,noInvite,form));
+    el('p',{class:'hint',text:claim?'Iron League now signs in with your name and a password. Your workouts stay with this profile, and the password never leaves this device.':invite?'Choose your name and a password. If this link was made for your existing profile, use that profile\u2019s name. Your password never leaves this device.':'Your password never leaves this device.'}),tabs,form));
   setTimeout(()=>(claim?.name?pass:name).focus(),60);
 }
 

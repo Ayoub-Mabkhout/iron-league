@@ -227,7 +227,7 @@ function sharing(){
     button('Enable notifications on this device','btn quiet wide',()=>enablePush(status)),status);
   pushStatus(status).catch(()=>{status.textContent='Connect to check notification settings.'});
   const item=(key,title,note,done)=>{const t=toggle(title,note,!!me?.[key]);t.input.onchange=async()=>{try{me={...me,...await api('me',{method:'PATCH',body:{[key]:t.input.checked}})};done?.(t.input.checked)}catch{t.input.checked=!t.input.checked;toast('Connect to change this.')}};return t.el};
-  c.append(item('share_progress','Share my progress','Friends can open your sprint, workout count, ranks and lift and volume trends. Notes, photos and coach chats stay private.',on=>toast(on?'Sharing your progress':'Progress is private')),
+  c.append(item('share_progress','Share my progress','League members can see your sprint, ranks and workout trends. Check-ins appear in the feed when you post them. Your private progress photos stay in your vault.',on=>toast(on?'Sharing your progress':'Progress is private')),
     item('share_schedule','Share my workout schedule','Friends see your planned sessions and whether you made them. Needs progress sharing.'),
     item('rank_alerts','Competitive notifications','A notification when a friend ranks up.',on=>{device.hidden=!on}),device);
   return c;

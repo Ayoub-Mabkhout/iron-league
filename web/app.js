@@ -78,12 +78,14 @@ function join(){
 
 let frame=0,pushTimer=0;
 async function start(account){
+  settings.selectAccount(account.id);
   await store.load(account.id);
   screen.mount(app,account);
   // Repaint the dashboard on any change, and send local edits shortly after they settle.
   store.onChange(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(screen.render);if(store.waiting()){clearTimeout(pushTimer);pushTimer=setTimeout(()=>store.sync(),1500)}});
   screen.refresh();
-  settings.load().then(()=>screen.render());
+  await settings.load();
+  screen.render();
   // Signed in with a password in this tab: encrypt any older plaintext photos in the background.
   if(auth.vaultHandle())photos.migrate().catch(()=>{});
   if(account.setup_complete===false)setup.open(account,()=>screen.render());

@@ -11,9 +11,12 @@ export function privacyCard(headingLevel='h3'){
     el('p',{class:'hint',text:'Profile details such as age, height and weight, along with workouts and ranks, are processed by Iron League outside the encrypted photo vault.'}));
 }
 
-const KEY='train-settings';
-let value=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||{}}catch{return {}}})();
-const keep=()=>{try{localStorage.setItem(KEY,JSON.stringify(value))}catch{}};
+let key='',value={};
+export function selectAccount(id){
+  key='train-settings:'+id;
+  try{value=JSON.parse(localStorage.getItem(key))||{}}catch{value={}}
+}
+const keep=()=>{if(key)try{localStorage.setItem(key,JSON.stringify(value))}catch{}};
 export const get=()=>value;
 export const scheduledSprints=()=>!!value.scheduled_sprints;
 export const diss=()=>!!value.roast;

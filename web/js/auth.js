@@ -159,7 +159,7 @@ function forgotPassword(prefill,done){
       catch(e){go.disabled=false;status.textContent=passkeyMessage(e,"Couldn't sign in with the passkey.")}});
     parts.push(el('p',{class:'dialog-text',text:'Sign in with your passkey, then choose a new password. Your photos stay readable.'}),go,status);
   }
-  parts.push(el('p',{class:'dialog-text',text:'No passkey? Ask the person who invited you to send you a sign-in link from Iron League on their phone. Open it, enter your name and choose a new password; your recovery key or a passkey then reopens your photos.'}));
+  parts.push(el('p',{class:'dialog-text',text:'No passkey? Ask Iron League support for a recovery link for your profile. Open it, enter your name and choose a new password; your recovery key or a passkey then reopens your photos.'}));
   d.append(...parts,el('div',{class:'dialog-actions'},button('Close','btn ghost',close)));
   document.body.append(d);d.showModal();
 }

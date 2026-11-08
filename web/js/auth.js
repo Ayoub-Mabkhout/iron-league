@@ -100,10 +100,34 @@ export function screen(root,done,claim=null,invite=null){
   const withKey=button('Sign in with a passkey','btn wide',async()=>{withKey.disabled=true;note.textContent='Waiting for your passkey…';
     try{done(await signInWithPasskey())}catch(err){withKey.disabled=false;note.textContent=passkeyMessage(err,"Couldn't sign in with the passkey.")}});
   const canPasskey=passkeys.available();
-  const noInvite=el('p',{class:'hint',text:'To create a profile, open the invite link a member sent you. If you already have a profile, sign in with its name.'});
+  const inviteInput=el('input',{class:'field',type:'url',required:true,placeholder:'Paste invite link',
+    attrs:{'aria-label':'Iron League invite link',autocapitalize:'none',spellcheck:'false'}});
+  const inviteNote=el('p',{class:'hint',attrs:{role:'status'}});
+  const noInvite=el('form',{class:'auth-form card'},
+    el('h2',{class:'card-title',text:'Create a profile'}),
+    el('p',{class:'hint',text:'Ask an Iron League member for an invite link, then paste it here.'}),
+    inviteInput,el('button',{class:'btn primary wide',type:'submit',text:'Continue with invite'}),inviteNote);
+  noInvite.onsubmit=e=>{
+    e.preventDefault();
+    let link;
+    try{link=new URL(inviteInput.value.trim())}catch{}
+    const cleanPath=path=>path.replace(/\/$/,'');
+    const token=link?.searchParams.get('invite');
+    if(!token||link.origin!==location.origin||cleanPath(link.pathname)!==cleanPath(location.pathname)){
+      inviteNote.textContent='Paste the full Iron League invite link you received.';
+      inviteInput.focus();
+      return;
+    }
+    invite=token;
+    inviteInput.value='';
+    inviteNote.textContent='';
+    show('create');
+    name.focus();
+  };
   const tabs=el('div',{class:'segmented',attrs:{role:'tablist'}}),form=el('form',{class:'auth-form'},name,pass,again,go,withKey,note,forgot);
   const show=m=>{mode=m;note.textContent='';again.hidden=m==='signin';forgot.hidden=m!=='signin';withKey.hidden=m!=='signin'||!canPasskey;pass.autocomplete=m==='signin'?'current-password':'new-password';go.textContent={signin:'Sign in',create:'Create profile',claim:'Set password'}[m];
     const blocked=m==='create'&&!invite;form.hidden=blocked;noInvite.hidden=!blocked;
+    if(blocked)inviteInput.focus();
     if(m==='claim'){tabs.hidden=true;return}
     tabs.replaceChildren(...[['signin','Sign in'],['create','New profile']].map(([k,t])=>{const b=el('button',{type:'button',class:'seg'+(k===m?' on':''),text:t,attrs:{role:'tab','aria-selected':String(k===m)}});b.onclick=()=>show(k);return b}))};
   form.onsubmit=async e=>{e.preventDefault();const n=name.value.trim(),p=pass.value;
